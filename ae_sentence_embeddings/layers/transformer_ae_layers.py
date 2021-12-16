@@ -70,7 +70,8 @@ class PostPoolingLayer(tfl.Layer):
         dense_params = {
             "units": self.config.hidden_size,
             "activation": self.config.hidden_act,
-            "kernel_initializer": TruncatedNormal(stddev=self.config.initializer_range)
+            "kernel_initializer": TruncatedNormal(stddev=self.config.initializer_range),
+            "input_shape": (None, None, self.config.hidden_size)
         }
         self.post_pool_mean_dense = tfl.Dense(**dense_params, name="post_pool_mean_dense")
         self.post_pool_logvar_dense = tfl.Dense(**dense_params, name="post_pool_logvar_dense")
