@@ -15,6 +15,7 @@ class IgnorantSparseCatTest(tf.test.TestCase):
             a random tensor of shape (2, 4, 5), which represents the logits;
             an integer-valued tensor of shape (2, 4), which represent the class labels
         """
+        super().setUp()
         self.logits = tf.keras.backend.random_normal(shape=(2, 4, 5))
         self.labels = tf.constant([[0, 3, 2, -1], [1, 4, -1, -1]])
 
