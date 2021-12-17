@@ -14,12 +14,13 @@ from transformers.modeling_tf_utils import keras_serializable
 @keras_serializable
 class AeTransformerEncoder(TFBertEncoder):
     """Make TFBertEncoder serializable"""
-    pass
+    config_class = BertConfig
 
 
 @keras_serializable
 class AeTransformerDecoder(tfl.Layer):
     """Define a GPT decoder for an autoencoder"""
+    config_class = OpenAIGPTConfig
 
     def __init__(self, config: OpenAIGPTConfig, **kwargs) -> None:
         """Layer initializer
@@ -63,6 +64,7 @@ class VaeSampling(tfl.Layer):
 @keras_serializable
 class PostPoolingLayer(tfl.Layer):
     """A layer applied after pooling from the encoder to obtain Gaussian mean and variance values for a VAE"""
+    config_class = BertConfig
 
     def __init__(self, config: BertConfig, **kwargs):
         super().__init__(**kwargs)

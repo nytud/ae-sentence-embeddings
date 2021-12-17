@@ -39,11 +39,19 @@ class TransformerVae(KModel):
         self.sampler = VaeSampling()
 
     @staticmethod
-    def _latent_loss(mean: tf.Tensor, log_var: tf.Tensor) -> tf.Tensor:
-        """Calculate VAE latent loss"""
-        latent_loss = -0.5 * tf.reduce_sum(1 + log_var - tf.exp(log_var) - tf.square(mean),
-                                           axis=-1)
-        return tf.reduce_mean(latent_loss)
+    def _latent_loss(mean: tf.Tensor, log_var: tf.Tensor, attn_mask: tf.Tensor) -> tf.Tensor:
+        """Calculate VAE latent loss
+
+        Args:
+            mean: The Gaussian mean vector
+            log_var: The Gaussian variance vector
+            attn_mask: Attention mask, which is necessary to calculate a normalizing constant
+        """
+        latent_loss = -0.5 * tf.reduce_sum(1 + log_var - tf.exp(log_var) - tf.square(mean), axis=-1)
+        norm_nominator = tf.cast(tf.reduce_sum(attn_mask, axis=-1), mean.dtype)
+        norm_denominator = tf.cast(tf.shape(mean)[-1], mean.dtype)
+        norm_const = tf.divide(norm_nominator, norm_denominator)
+        return tf.reduce_mean(tf.multiply(latent_loss, norm_const))
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
         """Call the full model

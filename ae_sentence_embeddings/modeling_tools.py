@@ -2,12 +2,13 @@
 
 from typing import Dict, List, Union
 import tensorflow as tf
+from tensorflow.python.framework.dtypes import DType
 from transformers.modeling_tf_utils import shape_list
 
 
 def process_attention_mask(
         attention_mask: tf.Tensor,
-        embedding_dtype: Union[str, tf.float32, tf.float32] = tf.float32,
+        embedding_dtype: Union[str, DType] = tf.float32,
 ) -> tf.Tensor:
     """Reshape attention mask and modify its values
 
