@@ -10,7 +10,7 @@ from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 
 from ae_sentence_embeddings.models import SentAeEncoder, SentAeDecoder
 from ae_sentence_embeddings.layers import VaeSampling
-from ae_sentence_embeddings.modeling_tools import make_decoder_mask
+from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
 
 
 class TransformerVae(KModel):
@@ -65,7 +65,7 @@ class TransformerVae(KModel):
             The logits of a probability distribution for next token prediction
         """
         input_ids, enc_attn_mask = inputs
-        dec_attn_mask = make_decoder_mask(enc_attn_mask)
+        dec_attn_mask = make_decoder_inputs(enc_attn_mask)
         enc_embeddings = self.embedding(input_ids, mode="embedding")
         mean, log_var, _ = self.encoder((enc_embeddings, enc_attn_mask), training=training)
         self.add_loss(self._latent_loss(mean, log_var, attn_mask=enc_attn_mask))

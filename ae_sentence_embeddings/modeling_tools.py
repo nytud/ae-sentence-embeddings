@@ -31,10 +31,20 @@ def process_attention_mask(
     return extended_attention_mask
 
 
-def make_decoder_mask(attention_mask: tf.Tensor) -> tf.Tensor:
-    """Modify attention mask so that the decoder can use it correctly"""
-    zero_col = tf.zeros((tf.shape(attention_mask)[0], 1), dtype=attention_mask.dtype)
-    return tf.concat([attention_mask[:, 1:], zero_col], axis=-1)
+def make_decoder_inputs(input_tensor: tf.Tensor, pad_value: int = 0) -> tf.Tensor:
+    """Modify attention mask or input token IDS so that the decoder can use them correctly.
+    This means removing the first column and appending a new column filled with `pad_value`
+
+    Args:
+        input_tensor: a tensor of shape `(batch_size, sequence_length)`
+        pad_value: The value with which the appended column will be filled. Defaults to 0
+
+    Returns:
+        The modified tensor of the same shape as `input_tensor`
+
+    """
+    pad_col = tf.zeros((tf.shape(input_tensor)[0], 1), dtype=input_tensor.dtype) + pad_value
+    return tf.concat([input_tensor[:, 1:], pad_col], axis=-1)
 
 
 # This is no longer needed

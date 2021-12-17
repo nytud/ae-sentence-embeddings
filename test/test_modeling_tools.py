@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 
-from ae_sentence_embeddings.modeling_tools import make_decoder_mask, process_attention_mask
+from ae_sentence_embeddings.modeling_tools import make_decoder_inputs, process_attention_mask
 
 
 class ModelingToolTest(tf.test.TestCase):
@@ -12,10 +12,10 @@ class ModelingToolTest(tf.test.TestCase):
         """Fixture setup. Create an attention mask tensor"""
         self.attn_mask = tf.constant([[1, 1, 1, 0], [1, 1, 1, 1]])
 
-    def test_make_decoder_mask(self) -> None:
+    def test_make_decoder_inputs(self) -> None:
         """Test creating a decoder mask from an encoder mask"""
         expected_dec_attn_mask = tf.constant([[1, 1, 0, 0], [1, 1, 1, 0]])
-        dec_attn_mask = make_decoder_mask(self.attn_mask)
+        dec_attn_mask = make_decoder_inputs(self.attn_mask)
         self.assertAllEqual(expected_dec_attn_mask, dec_attn_mask, msg=f"Resulting mask is {dec_attn_mask}")
 
     def test_process_attention_mask(self) -> None:
