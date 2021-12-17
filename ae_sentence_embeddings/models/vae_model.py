@@ -8,7 +8,7 @@ from transformers.modeling_tf_utils import TFSharedEmbeddings
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 
-from ae_sentence_embeddings.models import AeTransformerEncoder, AeTransformerDecoder
+from ae_sentence_embeddings.models import SentAeEncoder, SentAeDecoder
 from ae_sentence_embeddings.layers import VaeSampling
 from ae_sentence_embeddings.modeling_tools import make_decoder_mask
 
@@ -30,12 +30,12 @@ class TransformerVae(KModel):
         self.enc_config = enc_config
         self.dec_config = dec_config
         self.embedding = TFSharedEmbeddings(
-            vocab_size=self.enc_config.hidden_size,
-            hidden_size=self.enc_config.vocab_size,
+            vocab_size=self.enc_config.vocab_size,
+            hidden_size=self.enc_config.hidden_size,
             initializer_range=self.enc_config.initializer_range
         )
-        self.encoder = AeTransformerEncoder(self.enc_config)
-        self.decoder = AeTransformerDecoder(self.dec_config)
+        self.encoder = SentAeEncoder(self.enc_config)
+        self.decoder = SentAeDecoder(self.dec_config)
         self.sampler = VaeSampling()
 
     @staticmethod
@@ -68,7 +68,7 @@ class TransformerVae(KModel):
         dec_attn_mask = make_decoder_mask(enc_attn_mask)
         enc_embeddings = self.embedding(input_ids, mode="embedding")
         mean, log_var, _ = self.encoder((enc_embeddings, enc_attn_mask), training=training)
-        self.add_loss(self._latent_loss(mean, log_var))
+        self.add_loss(self._latent_loss(mean, log_var, attn_mask=enc_attn_mask))
         sent_embedding = self.sampler((mean, log_var))
         dec_embeddings = tf.concat([tf.expand_dims(sent_embedding, axis=1), enc_embeddings[:, 1:, :]], axis=1)
         dec_output = self.decoder((dec_embeddings, dec_attn_mask), training=training)

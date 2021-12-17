@@ -59,7 +59,7 @@ class SentAeEncoder(KModel):
         )
         sequence_output = encoder_outputs[0]
         pooling_output = self.pooling(sequence_output)
-        post_pooling_mean, post_pooling_logvar = pooling_output(pooling_output)
+        post_pooling_mean, post_pooling_logvar = self.post_pooling(pooling_output)
         return post_pooling_mean, post_pooling_logvar, encoder_outputs
 
 
