@@ -8,6 +8,7 @@ from transformers import BertTokenizer
 from numpy.random import randint
 
 from ae_sentence_embeddings.data import tokenize_hgf_dataset, convert_to_tf_dataset, pad_and_batch
+from ae_sentence_embeddings.argument_handling import DataStreamArgs
 
 
 class DataTest(tf.test.TestCase):
@@ -45,6 +46,7 @@ class DataTest(tf.test.TestCase):
         seq_end_ids = [5, 8, 11, 15]
         out_spec = ((tf.TensorSpec(shape=(None,), dtype=tf.int32),) * 2,
                     tf.TensorSpec(shape=(None,), dtype=tf.int32))
+        data_stream_args = DataStreamArgs(batch_size=2, num_buckets=2, first_bucket_boundary=9)
 
         def data_gen() -> Generator[Tuple[Tuple[tf.Tensor, tf.Tensor], tf.Tensor], None, None]:
             for row, to_col in enumerate(seq_end_ids):
@@ -52,12 +54,7 @@ class DataTest(tf.test.TestCase):
                 yield (input_ids, attn_mask), targets
 
         tf_dataset = tf.data.Dataset.from_generator(data_gen, output_signature=out_spec)
-        tf_dataset = pad_and_batch(
-            tf_dataset=tf_dataset,
-            batch_size=2,
-            num_buckets=2,
-            first_bucket_boundary=9
-        )
+        tf_dataset = pad_and_batch(tf_dataset=tf_dataset, data_stream_args=data_stream_args)
         outputs = list(iter(tf_dataset))
         self.assertEqual(3, len(outputs), msg=f"Output tensors are:\n{outputs}")
         self.assertAllEqual([(2, 8), (1, 11), (1, 15)], [data_tensors[0][0].shape for data_tensors in outputs])
