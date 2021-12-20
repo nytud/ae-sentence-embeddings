@@ -29,11 +29,11 @@ class TokenizationArgs(DeeplArgs):
     Fields:
         text_dataset_path: Path to a text file
         tokenizer: Tokenizer name or path
-        output_path: Output dataset path
+        tokenized_output_path: Output dataset path
     """
     text_dataset_path: str
     tokenizer: str
-    output_path: str
+    tokenized_output_path: str
 
 
 @dataclass
@@ -98,6 +98,17 @@ class LearningRateArgs(DeeplArgs):
                 self.max_rate = self.learning_rate * 10
             if self.last_rate is None:
                 self.last_rate = self.learning_rate / 100
+
+
+@dataclass
+class AdamWArgs(DeeplArgs):
+    """A dataclass for AdamW optimizer arguments
+    For details on the fields, see `https://www.tensorflow.org/addons/api_docs/python/tfa/optimizers/AdamW`
+    """
+    weight_decay: float = 5e-5
+    learning_rate: float = 1e-5
+    beta_1: float = 0.9
+    beta_2: float = 0.999
 
 
 @dataclass
