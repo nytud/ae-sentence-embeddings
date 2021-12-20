@@ -10,13 +10,19 @@ from datasets import Dataset as HgfDataset
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
 
 
-def tokenize_dataset(dataset: HgfDataset, tokenizer: BertTokenizer, text_col_name: str = "text") -> HgfDataset:
+def tokenize_hgf_dataset(
+        dataset: HgfDataset,
+        tokenizer: BertTokenizer,
+        text_col_name: str = "text",
+        target_pad: int = -1
+) -> HgfDataset:
     """Tokenize a dataset
 
     Args:
         dataset: The input dataset
         tokenizer: The tokenizer model
         text_col_name: Text column name in the input dataset. Defaults to `\"text\"`
+        target_pad: Padding ID for target token IDs
 
     Returns:
         The tokenized dataset with columns `(input_ids, attention_mask, targets)`,
@@ -29,10 +35,9 @@ def tokenize_dataset(dataset: HgfDataset, tokenizer: BertTokenizer, text_col_nam
 
     def tok_func(example):
         res = tokenizer(example[text_col_name], return_token_type_ids=False, return_tensors='tf')
+        res[target_name] = make_decoder_inputs(res[input_ids_name], pad_value=target_pad)
         res[input_ids_name] = tf.squeeze(res[input_ids_name])
         res[attn_mask_name] = tf.squeeze(res[attn_mask_name])
-        decoder_input_ids = make_decoder_inputs(res[input_ids_name], pad_value=tokenizer.pad_token_id)
-        res[target_name] = tf.where(decoder_input_ids == tokenizer.pad_token_id, -1, decoder_input_ids)
         return res
 
     return dataset.map(tok_func, batched=False)
@@ -91,10 +96,8 @@ def pad_and_batch(
     if shuffling_buffer_size is not None:
         tf_dataset = tf_dataset.shuffle(buffer_size=shuffling_buffer_size)
 
-    if isinstance(input_padding, int):
-        padding_values = (input_padding, target_padding)
-    else:
-        padding_values = (tuple(input_padding), target_padding)
+    input_padding = tuple(input_padding) if not isinstance(input_padding, (int, tuple)) else input_padding
+    padding_values = (input_padding, target_padding)
 
     if num_buckets is None or first_bucket_boundary is None:
         tf_dataset = tf_dataset.padded_batch(batch_size, padding_values=padding_values)

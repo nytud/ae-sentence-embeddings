@@ -52,12 +52,12 @@ rsa==4.7.2
 sacremoses==0.0.45
 sentencepiece==0.1.96
 six==1.15.0
-tensorboard==2.5.0
+tensorboard==2.7.0
 tensorboard-data-server==0.6.1
 tensorboard-plugin-wit==1.8.0
-tensorflow==2.5.0
+tensorflow==2.7.0
 tensorflow-addons==0.13.0
-tensorflow-estimator==2.5.0
+tensorflow-estimator==2.7.0
 termcolor==1.1.0
 tokenizers==0.10.3
 tqdm==4.62.3
