@@ -1,8 +1,9 @@
 {
     "ae_sent_config": {
         "tokenized_dataset_path": "dataset.jsonl",
+        "hgf_cache_dir": ".cache",
         "input_padding": [0, 0],
-        "target_padding": 0,
+        "target_padding": -1,
         "batch_size": 32,
         "num_buckets": 3,
         "first_bucket_boundary": 33,

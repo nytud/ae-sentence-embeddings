@@ -1,6 +1,8 @@
 """A module for functions that adapt inputs to layers"""
 
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Any
+import json
+
 import tensorflow as tf
 from tensorflow.python.framework.dtypes import DType
 from transformers.modeling_tf_utils import shape_list
@@ -73,3 +75,10 @@ def make_dummy_bert_inputs(
         "token_type_ids": token_type_ids,
         "past_key_values": past_key_values,
     }
+
+
+def read_json(file_path: str) -> Dict[str, Any]:
+    """Read in a `json` configuration file"""
+    with open(file_path, 'r', encoding='utf-8') as f:
+        json_dict = json.load(f)
+    return json_dict
