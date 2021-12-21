@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Mapping, Dict, Any, Union, Optional, Sequence
 from inspect import signature
 
+from transformers import BertConfig, OpenAIGPTConfig
+
 
 class DeeplArgs:
     """Base class for training arguments. Subclass it and add fields to use its methods"""
@@ -130,12 +132,26 @@ class SaveAndLogArgs(DeeplArgs):
 
 
 @dataclass
-class ConfigPaths(DeeplArgs):
-    """A dataclass for configuration file paths
+class TransformerConfigs(DeeplArgs):
+    """A dataclass for Transformer configuration objects
 
     Fields:
-        bert_config_path: Optional. Path to a BERT configuration file
-        gpt_config_path: Optional. Path to a GPT configuration file
+        bert_config: A BERT configuration object
+        gpt_config: A GPT configuration object
     """
-    bert_config_path: Optional[str] = None
-    gpt_config_path: Optional[str] = None
+    bert_config: BertConfig
+    gpt_config: OpenAIGPTConfig
+
+
+@dataclass
+class DataSplitPathArgs(DeeplArgs):
+    """A dataclass for train, dev and test dataset paths
+
+    Fields:
+        train_path: Path to the training data file
+        dev_path: Path to the validation data file
+        test_path: Optional. Path to the test data file
+    """
+    train_path: str
+    dev_path: str
+    test_path: Optional[str] = None

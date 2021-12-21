@@ -1,6 +1,7 @@
 """A module for functions that adapt inputs to layers"""
 
 from typing import Dict, List, Union, Any
+from argparse import ArgumentParser
 import json
 
 import tensorflow as tf
@@ -82,3 +83,10 @@ def read_json(file_path: str) -> Dict[str, Any]:
     with open(file_path, 'r', encoding='utf-8') as f:
         json_dict = json.load(f)
     return json_dict
+
+
+def get_training_args() -> ArgumentParser:
+    """Get an `ArgumentParser` to handle command line arguments"""
+    parser = ArgumentParser(description="Command line arguments for model training")
+    parser.add_argument("config_file", help="Path to a `json` configuration file")
+    return parser

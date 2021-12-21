@@ -18,6 +18,7 @@
         "log_path": "logs",
         "save_freq": "epoch",
         "log_update_freq": 1000,
+        "num_epochs": 3,
         "devices": ["GPU:0", "GPU:1"]
     },
     "bert_config": {
