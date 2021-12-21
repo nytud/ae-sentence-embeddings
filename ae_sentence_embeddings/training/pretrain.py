@@ -63,7 +63,7 @@ def group_arguments(args: Mapping[str, Any]
     return dataset_split_paths, data_args, lr_args, adamw_args, save_log_args
 
 
-def pretrain(
+def pretrain_transformer_ae(
         dataset_split_paths: DataSplitPathArgs,
         data_args: DataStreamArgs,
         lr_args: LearningRateArgs,
