@@ -4,8 +4,9 @@ from os import environ
 from typing import Mapping, Tuple, Any, Optional, Sequence
 
 import tensorflow as tf
-from tensorflow.keras.callbacks import History
+from tensorflow.keras.callbacks import History, EarlyStopping
 from tensorflow_addons.optimizers import AdamW
+from transformers import BertConfig, OpenAIGPTConfig
 
 from ae_sentence_embeddings.argument_handling import (
     DataStreamArgs,
@@ -63,6 +64,12 @@ def group_arguments(args: Mapping[str, Any]
     return dataset_split_paths, data_args, lr_args, adamw_args, save_log_args
 
 
+def get_transformer_configs(config_dict: Mapping[str, Any]) -> TransformerConfigs:
+    bert_config = BertConfig(**config_dict["bert_config"])
+    gpt_config = OpenAIGPTConfig(**config_dict["gpt_config"])
+    return TransformerConfigs(bert_config, gpt_config)
+
+
 def pretrain_transformer_ae(
         dataset_split_paths: DataSplitPathArgs,
         data_args: DataStreamArgs,
@@ -113,3 +120,38 @@ def pretrain_transformer_ae(
         validation_data=dev_dataset
     )
     return history
+
+
+def hparam_search(
+        train_ds: tf.data.Dataset,
+        dev_ds: tf.data.Dataset,
+        lr_args: LearningRateArgs,
+        adamw_args: AdamWArgs,
+        transformer_configs: TransformerConfigs,
+) -> float:
+    """Training for hyperparameter tuning
+
+    Args:
+        train_ds: The training dataset
+        dev_ds: The validation dataset
+        lr_args: Learning rate scheduler arguments as a dataclass
+        adamw_args: AdamW optimizer arguments as a dataclass
+        transformer_configs: Transformer configurations as a dataclass
+
+    Returns:
+        The validation loss as a single floating point number
+
+    """
+    scheduler = OneCycleScheduler(lr_args)
+    strategy = tf.distribute.OneDeviceStrategy()
+    with strategy.scope():
+        model = TransformerVae(enc_config=transformer_configs.bert_config,
+                               dec_config=transformer_configs.gpt_config)
+        optimizer = AdamW(**adamw_args.to_dict())
+        model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True))
+    history = model.fit(
+        x=train_ds,
+        callbacks=[scheduler, EarlyStopping(patience=2)],
+        validation_data=dev_ds
+    )
+    return history.history["val_loss"]
