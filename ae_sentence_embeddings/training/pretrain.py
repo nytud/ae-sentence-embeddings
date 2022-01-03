@@ -128,6 +128,7 @@ def hparam_search(
         lr_args: LearningRateArgs,
         adamw_args: AdamWArgs,
         transformer_configs: TransformerConfigs,
+        save_log_args: SaveAndLogArgs
 ) -> float:
     """Training for hyperparameter tuning
 
@@ -137,13 +138,15 @@ def hparam_search(
         lr_args: Learning rate scheduler arguments as a dataclass
         adamw_args: AdamW optimizer arguments as a dataclass
         transformer_configs: Transformer configurations as a dataclass
+        save_log_args: Model checkpoint and logging arguments as a dataclass
 
     Returns:
         The validation loss as a single floating point number
 
     """
     scheduler = OneCycleScheduler(lr_args)
-    strategy = tf.distribute.OneDeviceStrategy()
+    log_callback = basic_checkpoint_and_log(save_log_args)[0]
+    strategy = tf.distribute.MirroredStrategy()
     with strategy.scope():
         model = TransformerVae(enc_config=transformer_configs.bert_config,
                                dec_config=transformer_configs.gpt_config)
@@ -151,7 +154,7 @@ def hparam_search(
         model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True))
     history = model.fit(
         x=train_ds,
-        callbacks=[scheduler, EarlyStopping(patience=2)],
+        callbacks=[scheduler, log_callback, EarlyStopping(patience=2)],
         validation_data=dev_ds
     )
     return history.history["val_loss"]
