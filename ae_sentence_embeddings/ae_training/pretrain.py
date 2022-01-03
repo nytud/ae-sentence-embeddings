@@ -1,4 +1,4 @@
-"""A module for pre-training"""
+"""A module for pre-ae_training"""
 
 from os import environ
 from typing import Mapping, Tuple, Any, Optional, Sequence
@@ -23,7 +23,7 @@ from ae_sentence_embeddings.models import TransformerVae
 
 
 def devices_setup(devices: Optional[Sequence[str]]) -> int:
-    """Setup devices for training
+    """Setup devices for ae_training
 
     Args:
         devices: Optional. A list of device names
@@ -90,12 +90,12 @@ def pretrain_transformer_ae(
         adamw_args: AdamW optimizer arguments as a dataclass
         save_log_args: Model checkpoint and logging arguments as a dataclass
         transformer_configs: Transformer configurations as a dataclass
-        num_epochs: Number of training epochs. Defaults to 3
+        num_epochs: Number of ae_training epochs. Defaults to 3
         dataset_cache_dir: Optional. A cache directory for loading the `dataset`
         devices: Optional. GPU devices to use, e.g. `\"GPU:0\", \"GPU:1\"`
 
     Returns:
-        The training history object
+        The ae_training history object
 
     """
     train_dataset, dev_dataset = get_train_and_validation(
@@ -133,7 +133,7 @@ def hparam_search(
     """Training for hyperparameter tuning
 
     Args:
-        train_ds: The training dataset
+        train_ds: The ae_training dataset
         dev_ds: The validation dataset
         lr_args: Learning rate scheduler arguments as a dataclass
         adamw_args: AdamW optimizer arguments as a dataclass

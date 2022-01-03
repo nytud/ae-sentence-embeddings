@@ -1,4 +1,4 @@
-"""A module for dataclasses that can help handle training and data arguments"""
+"""A module for dataclasses that can help handle ae_training and data arguments"""
 
 from __future__ import annotations
 from dataclasses import dataclass
@@ -9,7 +9,7 @@ from transformers import BertConfig, OpenAIGPTConfig
 
 
 class DeeplArgs:
-    """Base class for training arguments. Subclass it and add fields to use its methods"""
+    """Base class for ae_training arguments. Subclass it and add fields to use its methods"""
 
     @classmethod
     def collect_from_dict(cls, args_dict: Mapping[str, Any]) -> DeeplArgs:
@@ -148,7 +148,7 @@ class DataSplitPathArgs(DeeplArgs):
     """A dataclass for train, dev and test dataset paths
 
     Fields:
-        train_path: Path to the training data file
+        train_path: Path to the ae_training data file
         dev_path: Path to the validation data file
         test_path: Optional. Path to the test data file
     """

@@ -58,7 +58,7 @@ class TransformerVae(KModel):
 
         Args:
             inputs: A tensor of input token IDs and a tensor of attention mask
-            training: Specifies whether the model is being used in training mode
+            training: Specifies whether the model is being used in ae_training mode
             mask: Additional mask tensor. This will not be used
 
         Returns:

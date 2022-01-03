@@ -83,15 +83,15 @@ def get_train_and_validation(
         train_args: DataStreamArgs,
         cache_dir: Optional[str] = None
 ) -> Tuple[TFDataset, TFDataset]:
-    """Get a training and a validation TensorFlow dataset from files
+    """Get a ae_training and a validation TensorFlow dataset from files
 
     Args:
         data_split_paths: A dataclass with paths to `.jsonl` dataset splits
-        train_args: Data streaming arguments for training as a dataclass
+        train_args: Data streaming arguments for ae_training as a dataclass
         cache_dir: Optional. Cache directory for dataset loading
 
     Returns:
-        The training and the validation TensorFlow dataset
+        The ae_training and the validation TensorFlow dataset
 
     """
     dev_args = deepcopy(train_args)

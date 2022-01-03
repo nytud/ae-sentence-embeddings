@@ -87,6 +87,6 @@ def read_json(file_path: str) -> Dict[str, Any]:
 
 def get_training_args() -> ArgumentParser:
     """Get an `ArgumentParser` to handle command line arguments"""
-    parser = ArgumentParser(description="Command line arguments for model training")
+    parser = ArgumentParser(description="Command line arguments for model ae_training")
     parser.add_argument("config_file", help="Path to a `json` configuration file")
     return parser

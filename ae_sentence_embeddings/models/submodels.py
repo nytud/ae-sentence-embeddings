@@ -1,5 +1,5 @@
-"""A module for models that are intended to be used as layers in a more complex model during pre-training.
-Defining them as a model allows to use them separately after pre-training
+"""A module for models that are intended to be used as layers in a more complex model during pre-ae_training.
+Defining them as a model allows to use them separately after pre-ae_training
 """
 
 from typing import Tuple, Sequence
@@ -36,7 +36,7 @@ class SentAeEncoder(KModel):
         Args:
             inputs: Embedding tensor with shape `(batch_size, sequence_length, hidden_size)`
                     and attention mask with shape `(batch_size, sequence_length)`
-            training: Specifies whether the model is being used in training mode
+            training: Specifies whether the model is being used in ae_training mode
             mask: Additional mask tensor. This will not be used
 
         Returns:
@@ -83,7 +83,7 @@ class SentAeDecoder(KModel):
         Args:
             inputs: A hidden state tensor of shape `(batch_size, sequence_length, hidden_size)`
                     and an attention mask of shape `(batch_size, sequence_length)`
-            training: Specifies whether the model is being used in training mode
+            training: Specifies whether the model is being used in ae_training mode
             mask: Additional mask tensor. This will not be used
 
         Returns:

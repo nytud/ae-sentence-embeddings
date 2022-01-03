@@ -38,7 +38,7 @@ class AeTransformerDecoder(tfl.Layer):
 
         Args:
             inputs: Two tensors, the input hidden state and the attention mask
-            training: Specifies whether the model is being used in training mode
+            training: Specifies whether the model is being used in ae_training mode
 
         Returns:
             The output hidden state

@@ -6,7 +6,7 @@ from copy import deepcopy
 import tensorflow as tf
 import keras_tuner as kt
 
-from ae_sentence_embeddings.training import hparam_search, group_arguments, get_transformer_configs
+from ae_sentence_embeddings.ae_training import hparam_search, group_arguments, get_transformer_configs
 from ae_sentence_embeddings.data import get_train_and_validation
 
 
