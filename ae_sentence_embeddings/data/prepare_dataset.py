@@ -21,7 +21,8 @@ def convert_to_tf_dataset(dataset: HgfDataset) -> TFDataset:
 
     """
     target_col = {'target', 'targets', 'label', 'labels'}.intersection(dataset.features.keys()).pop()
-    feature_cols = [feature_col for feature_col in dataset.features.keys() if feature_col != target_col]
+    feature_cols = [feature_col for feature_col in dataset.features.keys()
+                    if feature_col not in {target_col, "text"}]
     out_spec = ((tf.TensorSpec(shape=(None,), dtype=tf.int32),) * len(feature_cols),
                 tf.TensorSpec(shape=(None,), dtype=tf.int32))
 
@@ -59,7 +60,7 @@ def pad_and_batch(
         tf_dataset = tf_dataset.shuffle(buffer_size=data_stream_args.shuffling_buffer_size)
 
     input_padding = data_stream_args.input_padding
-    if not isinstance(data_stream_args.input_padding, (int, tuple)):
+    if not isinstance(input_padding, (int, tuple)):
         input_padding = tuple(input_padding)
     padding_values = (input_padding, data_stream_args.target_padding)
 
@@ -83,7 +84,7 @@ def get_train_and_validation(
         train_args: DataStreamArgs,
         cache_dir: Optional[str] = None
 ) -> Tuple[TFDataset, TFDataset]:
-    """Get a ae_training and a validation TensorFlow dataset from files
+    """Get a training and a validation TensorFlow dataset from files
 
     Args:
         data_split_paths: A dataclass with paths to `.jsonl` dataset splits

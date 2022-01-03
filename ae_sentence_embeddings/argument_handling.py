@@ -148,7 +148,7 @@ class DataSplitPathArgs(DeeplArgs):
     """A dataclass for train, dev and test dataset paths
 
     Fields:
-        train_path: Path to the ae_training data file
+        train_path: Path to the training data file
         dev_path: Path to the validation data file
         test_path: Optional. Path to the test data file
     """

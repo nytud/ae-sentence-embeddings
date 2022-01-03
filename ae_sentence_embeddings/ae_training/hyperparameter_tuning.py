@@ -8,6 +8,7 @@ import keras_tuner as kt
 
 from ae_sentence_embeddings.ae_training import hparam_search, group_arguments, get_transformer_configs
 from ae_sentence_embeddings.data import get_train_and_validation
+from ae_sentence_embeddings.argument_handling import DataSplitPathArgs, DataStreamArgs
 
 
 class AeTuner(kt.Hyperband):
@@ -42,13 +43,14 @@ class AeTuner(kt.Hyperband):
 
 def search_hparams(arg_dict: Dict[str, Any]) -> None:
     """Tune hyperparameters and print the best values"""
-    dataset_split_paths, data_args, *_ = group_arguments(arg_dict)
+    dataset_split_paths = DataSplitPathArgs.collect_from_dict(arg_dict)
+    data_args = DataStreamArgs.collect_from_dict(arg_dict)
     train_ds, dev_ds = get_train_and_validation(
         data_split_paths=dataset_split_paths,
         train_args=data_args,
         cache_dir=arg_dict["hgf_cache_dir"]
     )
-    tuner = AeTuner(max_epochs=arg_dict["num_epochs"], directory=data_args["checkpoint_path"],
+    tuner = AeTuner(max_epochs=arg_dict["num_epochs"], directory=arg_dict["checkpoint_path"],
                     overwrite=True, project_name="ae_sentence_embeddings")
     tuner.search(train_ds=train_ds, dev_ds=dev_ds, arg_dict=arg_dict)
     best_hp = tuner.get_best_hyperparameters()[0]

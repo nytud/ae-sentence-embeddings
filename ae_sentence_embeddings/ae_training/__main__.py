@@ -10,7 +10,7 @@ def get_args() -> Namespace:
     """Get command line arguments"""
     parser = get_training_args()
     parser.add_argument("--search-hparams", dest="search_hparams", action="store_true",
-                        help="Specify if the ae_training is aimed at searching hyperparameters")
+                        help="Specify if the training is aimed at searching hyperparameters")
     return parser.parse_args()
 
 
