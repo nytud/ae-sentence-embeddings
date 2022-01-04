@@ -11,7 +11,7 @@ from ae_sentence_embeddings.data import get_train_and_validation
 from ae_sentence_embeddings.argument_handling import DataSplitPathArgs, DataStreamArgs
 
 
-class AeTuner(kt.Hyperband):
+class AeTuner(kt.RandomSearch):
     """A hyperband tuner for the model"""
 
     @staticmethod
@@ -21,6 +21,7 @@ class AeTuner(kt.Hyperband):
         hp_config = deepcopy(config)
         for param_name, param_details in hp_config.items():
             if isinstance(param_details, dict) and (hp_type := param_details.get("type")) in hparam_types.keys():
+                hp_type = hparam_types[hp_type]
                 new_hp = hp_type(param_name, **param_details["hp_space"])
                 hp_config[param_name] = new_hp
         return hp_config
@@ -50,7 +51,7 @@ def search_hparams(arg_dict: Dict[str, Any]) -> None:
         train_args=data_args,
         cache_dir=arg_dict["hgf_cache_dir"]
     )
-    tuner = AeTuner(max_epochs=arg_dict["num_epochs"], directory=arg_dict["checkpoint_path"],
+    tuner = AeTuner(max_trials=arg_dict["num_epochs"], directory=arg_dict["checkpoint_path"],
                     overwrite=True, project_name="ae_sentence_embeddings")
     tuner.search(train_ds=train_ds, dev_ds=dev_ds, arg_dict=arg_dict)
     best_hp = tuner.get_best_hyperparameters()[0]
