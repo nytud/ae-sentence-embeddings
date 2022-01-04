@@ -1,4 +1,4 @@
-"""A module for VAE model unittest"""
+"""A module for AE model unittest"""
 
 import tensorflow as tf
 from transformers import BertConfig, OpenAIGPTConfig

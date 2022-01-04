@@ -1,4 +1,4 @@
-"""A module for pre-ae_training"""
+"""A module for pre-training"""
 
 from os import environ
 from typing import Mapping, Tuple, Any, Optional, Sequence
@@ -19,7 +19,7 @@ from ae_sentence_embeddings.argument_handling import (
 from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log, OneCycleScheduler
 from ae_sentence_embeddings.data import get_train_and_validation
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
-from ae_sentence_embeddings.models import TransformerVae
+from ae_sentence_embeddings.models import TransformerAe
 
 
 def devices_setup(devices: Optional[Sequence[str]]) -> int:
@@ -117,11 +117,11 @@ def pretrain_transformer_ae(
     elif num_gpus == 1:
         strategy = tf.distribute.OneDeviceStrategy(device=devices[0])
     else:
-        raise NotImplementedError
+        raise NotImplementedError("A GPU is required for this task")
 
     with strategy.scope():
-        model = TransformerVae(enc_config=transformer_configs.bert_config,
-                               dec_config=transformer_configs.gpt_config)
+        model = TransformerAe(enc_config=transformer_configs.bert_config,
+                              dec_config=transformer_configs.gpt_config)
         optimizer = AdamW(**adamw_args.to_dict())
         model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
                       metrics=[IgnorantSparseCatAccuracy()])
@@ -160,8 +160,8 @@ def hparam_search(
     log_callback = basic_checkpoint_and_log(save_log_args)[0]
     strategy = tf.distribute.MirroredStrategy()
     with strategy.scope():
-        model = TransformerVae(enc_config=transformer_configs.bert_config,
-                               dec_config=transformer_configs.gpt_config)
+        model = TransformerAe(enc_config=transformer_configs.bert_config,
+                              dec_config=transformer_configs.gpt_config)
         optimizer = AdamW(**adamw_args.to_dict())
         model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True))
     history = model.fit(

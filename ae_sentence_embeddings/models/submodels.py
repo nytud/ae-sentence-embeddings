@@ -1,5 +1,5 @@
 """A module for models that are intended to be used as layers in a more complex model during pre-ae_training.
-Defining them as a model allows to use them separately after pre-ae_training
+Defining them as a model allows to use them separately after pre-training
 """
 
 from typing import Tuple, Sequence
@@ -14,7 +14,7 @@ from ae_sentence_embeddings.modeling_tools import process_attention_mask
 
 
 class SentAeEncoder(KModel):
-    """The full encoder part"""
+    """The full encoder part of an AE"""
 
     def __init__(self, config: BertConfig, **kwargs) -> None:
         """Layer initializer
@@ -27,10 +27,9 @@ class SentAeEncoder(KModel):
         self.config = config
         self.transformer_encoder = AeTransformerEncoder(self.config)
         self.pooling = tfl.Lambda(lambda x: tf.reduce_mean(x, axis=1))
-        self.post_pooling = PostPoolingLayer(self.config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
-             training=None, mask=None) -> Tuple[tf.Tensor, tf.Tensor, Sequence[tf.Tensor]]:
+             training=None, mask=None) -> Tuple[tf.Tensor, Sequence[tf.Tensor]]:
         """Call the encoder
 
         Args:
@@ -40,7 +39,7 @@ class SentAeEncoder(KModel):
             mask: Additional mask tensor. This will not be used
 
         Returns:
-            Two pooled tensors (mean and log variance for VAE sampling) and the Transformer encoder hidden state
+            A pooled tensor and the Transformer encoder outputs
         """
         embeddings, attention_mask = inputs
         attention_mask = process_attention_mask(attention_mask, embedding_dtype=embeddings.dtype)
@@ -58,7 +57,36 @@ class SentAeEncoder(KModel):
             training=training
         )
         sequence_output = encoder_outputs[0]
-        pooling_output = self.pooling(sequence_output)
+        return self.pooling(sequence_output), encoder_outputs
+
+
+class SentVaeEncoder(SentAeEncoder):
+    """The full encoder part of a VAE"""
+
+    def __init__(self, config: BertConfig, **kwargs) -> None:
+        """Layer initializer
+
+        Args:
+            config: A BERT configuration object
+            **kwargs: Keyword arguments for the parent class
+        """
+        super().__init__(config, **kwargs)
+        self.post_pooling = PostPoolingLayer(config)
+
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
+             training=None, mask=None) -> Tuple[tf.Tensor, tf.Tensor, Sequence[tf.Tensor]]:
+        """Call the encoder
+
+        Args:
+            inputs: Embedding tensor with shape `(batch_size, sequence_length, hidden_size)`
+                    and attention mask with shape `(batch_size, sequence_length)`
+            training: Specifies whether the model is being used in ae_training mode
+            mask: Additional mask tensor. This will not be used
+
+        Returns:
+            Two pooled tensors (mean and log variance for VAE sampling) and the Transformer encoder outputs
+        """
+        pooling_output, encoder_outputs = super().call(inputs, training=training)
         post_pooling_mean, post_pooling_logvar = self.post_pooling(pooling_output)
         return post_pooling_mean, post_pooling_logvar, encoder_outputs
 
