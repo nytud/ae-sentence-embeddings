@@ -32,7 +32,7 @@ def tokenize_hgf_dataset(
 
     def tok_func(example):
         res = tokenizer(example[text_col_name], return_token_type_ids=False, return_tensors='tf')
-        res[target_name] = make_decoder_inputs(res[input_ids_name], pad_value=target_pad)
+        res[target_name] = tf.squeeze(make_decoder_inputs(res[input_ids_name], pad_value=target_pad))
         res[input_ids_name] = tf.squeeze(res[input_ids_name])
         res[attn_mask_name] = tf.squeeze(res[attn_mask_name])
         return res
