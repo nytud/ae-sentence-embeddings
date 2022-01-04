@@ -18,7 +18,7 @@ from ae_sentence_embeddings.argument_handling import (
 )
 from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log, OneCycleScheduler
 from ae_sentence_embeddings.data import get_train_and_validation
-from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy
+from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
 from ae_sentence_embeddings.models import TransformerVae
 
 
@@ -98,21 +98,33 @@ def pretrain_transformer_ae(
         The ae_training history object
 
     """
+    data_options = tf.data.Options()
+    data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
     train_dataset, dev_dataset = get_train_and_validation(
         data_split_paths=dataset_split_paths,
         train_args=data_args,
         cache_dir=dataset_cache_dir
     )
+    train_dataset = train_dataset.with_options(data_options)
+    dev_dataset = dev_dataset.with_options(data_options)
+
     scheduler = OneCycleScheduler(lr_args)
     callbacks = basic_checkpoint_and_log(save_log_args)
     callbacks.append(scheduler)
     num_gpus = devices_setup(devices)
-    strategy = tf.distribute.MirroredStrategy() if num_gpus > 1 else tf.distribute.OneDeviceStrategy()
+    if num_gpus > 1:
+        strategy = tf.distribute.MirroredStrategy()
+    elif num_gpus == 1:
+        strategy = tf.distribute.OneDeviceStrategy(device=devices[0])
+    else:
+        raise NotImplementedError
+
     with strategy.scope():
         model = TransformerVae(enc_config=transformer_configs.bert_config,
                                dec_config=transformer_configs.gpt_config)
         optimizer = AdamW(**adamw_args.to_dict())
-        model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True))
+        model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
+                      metrics=[IgnorantSparseCatAccuracy()])
     history = model.fit(
         x=train_dataset,
         epochs=num_epochs,

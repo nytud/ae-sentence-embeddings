@@ -37,7 +37,8 @@ def convert_to_tf_dataset(dataset: HgfDataset) -> TFDataset:
 
 def pad_and_batch(
         tf_dataset: TFDataset,
-        data_stream_args: DataStreamArgs
+        data_stream_args: DataStreamArgs,
+        drop_remainder: bool = True
 ) -> TFDataset:
     """Pad and batch a TensorFlow dataset
 
@@ -51,6 +52,7 @@ def pad_and_batch(
     Args:
         tf_dataset: A `tensorflow.data.Dataset` object
         data_stream_args: A dataclass that contains data streaming arguments as defined in `argument_handling.py`.
+        drop_remainder: Specify whether the last batch should be dropped. Defaults to `True`
 
     Returns:
         The padded and batched TensorFlow dataset
@@ -59,8 +61,7 @@ def pad_and_batch(
     if data_stream_args.shuffling_buffer_size is not None:
         tf_dataset = tf_dataset.shuffle(buffer_size=data_stream_args.shuffling_buffer_size)
 
-    input_padding = data_stream_args.input_padding
-    if not isinstance(input_padding, (int, tuple)):
+    if not isinstance(input_padding := data_stream_args.input_padding, (int, tuple)):
         input_padding = tuple(input_padding)
     padding_values = (input_padding, data_stream_args.target_padding)
 
@@ -74,7 +75,8 @@ def pad_and_batch(
             element_length_func=lambda features, targets: tf.shape(targets)[0],
             bucket_boundaries=bucket_boundaries,
             bucket_batch_sizes=bucket_batch_sizes,
-            padding_values=padding_values
+            padding_values=padding_values,
+            drop_remainder=drop_remainder
         )
     return tf_dataset
 

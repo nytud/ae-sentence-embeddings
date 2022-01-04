@@ -20,6 +20,7 @@ def basic_checkpoint_and_log(save_log_args: SaveAndLogArgs) -> List[Callback]:
 
     """
     log_dir = os_path_join(save_log_args.log_path, strftime("run_%Y_%m_%d-%H_%M_%S"))
+    checkpoint_dir = os_path_join(save_log_args.checkpoint_path, "checkpoint_{epoch}")
     callbacks = [TensorBoard(log_dir=log_dir, update_freq=save_log_args.log_update_freq),
-                 ModelCheckpoint(filepath=save_log_args.checkpoint_path, save_freq=save_log_args.save_freq)]
+                 ModelCheckpoint(filepath=checkpoint_dir, save_freq=save_log_args.save_freq)]
     return callbacks
