@@ -105,7 +105,7 @@ def pretrain_transformer_ae(
         train_args=data_args,
         cache_dir=dataset_cache_dir
     )
-    train_dataset = train_dataset.with_options(data_options)
+    train_dataset = train_dataset.with_options(data_options).prefetch(1)
     dev_dataset = dev_dataset.with_options(data_options)
 
     scheduler = OneCycleScheduler(lr_args)

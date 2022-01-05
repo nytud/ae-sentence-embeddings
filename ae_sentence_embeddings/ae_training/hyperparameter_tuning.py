@@ -46,11 +46,16 @@ def search_hparams(arg_dict: Dict[str, Any]) -> None:
     """Tune hyperparameters and print the best values"""
     dataset_split_paths = DataSplitPathArgs.collect_from_dict(arg_dict)
     data_args = DataStreamArgs.collect_from_dict(arg_dict)
+    data_options = tf.data.Options()
+    data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
     train_ds, dev_ds = get_train_and_validation(
         data_split_paths=dataset_split_paths,
         train_args=data_args,
         cache_dir=arg_dict["hgf_cache_dir"]
     )
+    train_ds = train_ds.with_options(data_options).prefetch(1)
+    dev_ds = dev_ds.with_options(data_options)
+
     tuner = AeTuner(max_trials=arg_dict["num_epochs"], directory=arg_dict["checkpoint_path"],
                     overwrite=True, project_name="ae_sentence_embeddings")
     tuner.search(train_ds=train_ds, dev_ds=dev_ds, arg_dict=arg_dict)
