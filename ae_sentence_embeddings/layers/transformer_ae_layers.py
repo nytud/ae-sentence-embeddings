@@ -86,3 +86,27 @@ class PostPoolingLayer(tfl.Layer):
         mean_tensor = self.post_pool_layernorm(self.post_pool_dropout(mean_tensor))
         logvar_tensor = self.post_pool_layernorm(self.post_pool_dropout(logvar_tensor))
         return mean_tensor, logvar_tensor
+
+
+class AveragePoolingLayer(tfl.Layer):
+    """A layer for average pooling that takes padding token embedding into account"""
+
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], **kwargs) -> tf.Tensor:
+        """Do average pooling
+
+        Args:
+            inputs: A tuple of two tensors. The first is a 3D hidden state tensor,
+                    the second is a 2D attention mask tensor
+            kwargs: Additional keyword arguments
+
+        Returns:
+            A 2D pooled tensor
+
+        """
+        hidden_state, attention_mask = inputs
+        expanded_mask = tf.tile(tf.expand_dims(attention_mask, -1),
+                                tf.constant([1, 1, hidden_state.shape[-1]]))
+        masked_hidden_state = tf.where(expanded_mask == 1, hidden_state, 0.)
+        attention_mask = tf.expand_dims(tf.reduce_sum(attention_mask, axis=1), axis=1)
+        return tf.divide(tf.reduce_sum(masked_hidden_state, axis=1),
+                         tf.cast(attention_mask, tf.float32))

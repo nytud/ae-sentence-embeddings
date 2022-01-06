@@ -1,1 +1,7 @@
-from .transformer_ae_layers import AeTransformerDecoder, AeTransformerEncoder, VaeSampling, PostPoolingLayer
+from .transformer_ae_layers import (
+    AeTransformerDecoder,
+    AeTransformerEncoder,
+    VaeSampling,
+    PostPoolingLayer,
+    AveragePoolingLayer
+)

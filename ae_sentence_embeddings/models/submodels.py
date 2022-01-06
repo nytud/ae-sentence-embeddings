@@ -5,11 +5,16 @@ Defining them as a model allows to use them separately after pre-training
 from typing import Tuple, Sequence
 
 import tensorflow as tf
-from tensorflow.keras import Model as KModel, layers as tfl
+from tensorflow.keras import Model as KModel
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 
-from ae_sentence_embeddings.layers import AeTransformerEncoder, AeTransformerDecoder, PostPoolingLayer
+from ae_sentence_embeddings.layers import (
+    AeTransformerEncoder,
+    AeTransformerDecoder,
+    PostPoolingLayer,
+    AveragePoolingLayer
+)
 from ae_sentence_embeddings.modeling_tools import process_attention_mask
 
 
@@ -26,7 +31,7 @@ class SentAeEncoder(KModel):
         super().__init__(**kwargs)
         self.config = config
         self.transformer_encoder = AeTransformerEncoder(self.config)
-        self.pooling = tfl.Lambda(lambda x: tf.reduce_mean(x, axis=1))
+        self.pooling = AveragePoolingLayer()
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
              training=None, mask=None) -> Tuple[tf.Tensor, Sequence[tf.Tensor]]:
@@ -40,12 +45,13 @@ class SentAeEncoder(KModel):
 
         Returns:
             A pooled tensor and the Transformer encoder outputs
+
         """
         embeddings, attention_mask = inputs
-        attention_mask = process_attention_mask(attention_mask, embedding_dtype=embeddings.dtype)
+        mod_attention_mask = process_attention_mask(attention_mask, embedding_dtype=embeddings.dtype)
         encoder_outputs = self.transformer_encoder(
             hidden_states=embeddings,
-            attention_mask=attention_mask,
+            attention_mask=mod_attention_mask,
             head_mask=[None] * self.config.num_hidden_layers,
             past_key_values=[None] * self.config.num_hidden_layers,
             encoder_hidden_states=None,
@@ -57,7 +63,7 @@ class SentAeEncoder(KModel):
             training=training
         )
         sequence_output = encoder_outputs[0]
-        return self.pooling(sequence_output), encoder_outputs
+        return self.pooling((sequence_output, attention_mask)), encoder_outputs
 
 
 class SentVaeEncoder(SentAeEncoder):
