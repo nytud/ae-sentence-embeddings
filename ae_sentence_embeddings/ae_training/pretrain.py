@@ -19,7 +19,7 @@ from ae_sentence_embeddings.argument_handling import (
 from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log, OneCycleScheduler
 from ae_sentence_embeddings.data import get_train_and_validation
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
-from ae_sentence_embeddings.models import TransformerAe
+from ae_sentence_embeddings.models import TransformerVae
 
 
 def devices_setup(devices: Optional[Sequence[str]]) -> int:
@@ -120,8 +120,8 @@ def pretrain_transformer_ae(
         raise NotImplementedError("A GPU is required for this task")
 
     with strategy.scope():
-        model = TransformerAe(enc_config=transformer_configs.bert_config,
-                              dec_config=transformer_configs.gpt_config)
+        model = TransformerVae(enc_config=transformer_configs.bert_config,
+                               dec_config=transformer_configs.gpt_config)
         optimizer = AdamW(**adamw_args.to_dict())
         model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
                       metrics=[IgnorantSparseCatAccuracy()])
@@ -129,7 +129,8 @@ def pretrain_transformer_ae(
         x=train_dataset,
         epochs=num_epochs,
         callbacks=callbacks,
-        validation_data=dev_dataset
+        validation_data=dev_dataset,
+        verbose=2
     )
     return history
 
@@ -160,8 +161,8 @@ def hparam_search(
     log_callback = basic_checkpoint_and_log(save_log_args)[0]
     strategy = tf.distribute.MirroredStrategy()
     with strategy.scope():
-        model = TransformerAe(enc_config=transformer_configs.bert_config,
-                              dec_config=transformer_configs.gpt_config)
+        model = TransformerVae(enc_config=transformer_configs.bert_config,
+                               dec_config=transformer_configs.gpt_config)
         optimizer = AdamW(**adamw_args.to_dict())
         model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True))
     history = model.fit(

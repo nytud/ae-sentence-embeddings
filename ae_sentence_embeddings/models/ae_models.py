@@ -1,6 +1,6 @@
 """A module for defining Transformer-based AEs"""
 
-from typing import Tuple
+from typing import Tuple, Optional
 
 import tensorflow as tf
 from tensorflow.keras import Model as KModel
@@ -13,11 +13,11 @@ from ae_sentence_embeddings.layers import VaeSampling
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
 
 
-class TransformerAe(KModel):
-    """A Transformer-based AE"""
+class BaseAe(KModel):
+    """Base class for Transformer AEs. Used for subclassing only"""
 
     def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig, **kwargs) -> None:
-        """Initialize the AE
+        """Initialize the invariant AE layers that do not depend on the AE architecture choice
 
         Args:
             enc_config: The encoder configuration object
@@ -29,13 +29,52 @@ class TransformerAe(KModel):
         super().__init__(**kwargs)
         self.enc_config = enc_config
         self.dec_config = dec_config
-        self.embedding = TFSharedEmbeddings(
+        self.enc_embedding = TFSharedEmbeddings(
             vocab_size=self.enc_config.vocab_size,
             hidden_size=self.enc_config.hidden_size,
             initializer_range=self.enc_config.initializer_range
         )
-        self.encoder = SentAeEncoder(self.enc_config)
+        self.dec_embedding = TFSharedEmbeddings(
+            vocab_size=self.enc_config.vocab_size,
+            hidden_size=self.enc_config.hidden_size,
+            initializer_range=self.enc_config.initializer_range
+        )
         self.decoder = SentAeDecoder(self.dec_config)
+
+    def _call_decoder(self, sent_embedding: tf.Tensor, input_ids: tf.Tensor,
+                      dec_attn_mask: tf.Tensor, training: Optional[bool]) -> tf.Tensor:
+        """Call the decoder
+
+        Args:
+            sent_embedding: A sentence embedding tensor
+            input_ids: A tensor of input token IDs
+            dec_attn_mask: A tensor of decoder attention mask
+            training: The training mode
+
+        Returns:
+            A tensor of logits
+
+        """
+        dec_embeddings = self.dec_embedding(input_ids[:, 1:], mode="embedding")
+        dec_embeddings = tf.concat([tf.expand_dims(sent_embedding, axis=1), dec_embeddings], axis=1)
+        dec_output = self.decoder((dec_embeddings, dec_attn_mask), training=training)
+        logits = self.dec_embedding(dec_output, mode="linear")
+        return logits
+
+
+class TransformerAe(BaseAe):
+    """A Transformer-based AE"""
+
+    def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig, **kwargs) -> None:
+        """Initialize the AE
+
+        Args:
+            enc_config: The encoder configuration object
+            dec_config: The decoder configuration object
+            **kwargs: Keyword arguments for the parent class
+        """
+        super().__init__(enc_config, dec_config, **kwargs)
+        self.encoder = SentAeEncoder(self.enc_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
         """Call the full model
@@ -47,18 +86,22 @@ class TransformerAe(KModel):
 
         Returns:
             The logits of a probability distribution for next token prediction
+
         """
         input_ids, enc_attn_mask = inputs
         dec_attn_mask = make_decoder_inputs(enc_attn_mask)
-        enc_embeddings = self.embedding(input_ids, mode="embedding")
+        enc_embeddings = self.enc_embedding(input_ids, mode="embedding")
         sent_embedding, _ = self.encoder((enc_embeddings, enc_attn_mask), training=training)
-        dec_embeddings = tf.concat([tf.expand_dims(sent_embedding, axis=1), enc_embeddings[:, 1:, :]], axis=1)
-        dec_output = self.decoder((dec_embeddings, dec_attn_mask), training=training)
-        logits = self.embedding(dec_output, mode="linear")
+        logits = self._call_decoder(
+            sent_embedding=sent_embedding,
+            input_ids=input_ids,
+            dec_attn_mask=dec_attn_mask,
+            training=training
+        )
         return logits
 
 
-class TransformerVae(KModel):
+class TransformerVae(BaseAe):
     """A Transformer-based VAE"""
 
     def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig, **kwargs) -> None:
@@ -69,18 +112,8 @@ class TransformerVae(KModel):
             dec_config: The decoder configuration object
             **kwargs: Keyword arguments for the parent class
         """
-        if enc_config.vocab_size != dec_config.vocab_size or enc_config.hidden_size != dec_config.n_embd:
-            raise ValueError("Vocab size and hidden size should be the same in the encoder and the decoder")
-        super().__init__(**kwargs)
-        self.enc_config = enc_config
-        self.dec_config = dec_config
-        self.embedding = TFSharedEmbeddings(
-            vocab_size=self.enc_config.vocab_size,
-            hidden_size=self.enc_config.hidden_size,
-            initializer_range=self.enc_config.initializer_range
-        )
+        super().__init__(enc_config, dec_config, **kwargs)
         self.encoder = SentVaeEncoder(self.enc_config)
-        self.decoder = SentAeDecoder(self.dec_config)
         self.sampler = VaeSampling()
 
     @staticmethod
@@ -92,7 +125,7 @@ class TransformerVae(KModel):
             log_var: The Gaussian variance vector
             attn_mask: Attention mask, which is necessary to calculate a normalizing constant
         """
-        latent_loss = -0.5 * tf.reduce_sum(1 + log_var - tf.exp(log_var) - tf.square(mean), axis=-1)
+        latent_loss = -0.1 * tf.reduce_sum(1 + log_var - tf.exp(log_var) - tf.square(mean), axis=-1)
         norm_nominator = tf.cast(tf.reduce_sum(attn_mask, axis=-1), mean.dtype)
         norm_denominator = tf.cast(tf.shape(mean)[-1], mean.dtype)
         norm_const = tf.divide(norm_nominator, norm_denominator)
@@ -111,11 +144,14 @@ class TransformerVae(KModel):
         """
         input_ids, enc_attn_mask = inputs
         dec_attn_mask = make_decoder_inputs(enc_attn_mask)
-        enc_embeddings = self.embedding(input_ids, mode="embedding")
+        enc_embeddings = self.enc_embedding(input_ids, mode="embedding")
         mean, log_var, _ = self.encoder((enc_embeddings, enc_attn_mask), training=training)
         self.add_loss(self._latent_loss(mean, log_var, attn_mask=enc_attn_mask))
         sent_embedding = self.sampler((mean, log_var))
-        dec_embeddings = tf.concat([tf.expand_dims(sent_embedding, axis=1), enc_embeddings[:, 1:, :]], axis=1)
-        dec_output = self.decoder((dec_embeddings, dec_attn_mask), training=training)
-        logits = self.embedding(dec_output, mode="linear")
+        logits = self._call_decoder(
+            sent_embedding=sent_embedding,
+            input_ids=input_ids,
+            dec_attn_mask=dec_attn_mask,
+            training=training
+        )
         return logits
