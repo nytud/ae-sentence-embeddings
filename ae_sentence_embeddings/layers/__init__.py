@@ -5,3 +5,4 @@ from .transformer_ae_layers import (
     PostPoolingLayer,
     AveragePoolingLayer
 )
+from .rnn_decoder import AeGruDecoder

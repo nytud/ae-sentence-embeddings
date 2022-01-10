@@ -13,7 +13,7 @@ class DeeplArgs:
 
     @classmethod
     def collect_from_dict(cls, args_dict: Mapping[str, Any]) -> DeeplArgs:
-        """Create a TrainingArgs instance from a dictionary. Ignore irrelevant keys"""
+        """Create a DeeplArgs instance from a dictionary. Ignore irrelevant keys"""
         filtered_args = {key: val for key, val in args_dict.items()
                          if key in signature(cls).parameters}
         result = cls(**filtered_args) if filtered_args else None
@@ -137,10 +137,37 @@ class TransformerConfigs(DeeplArgs):
 
     Fields:
         bert_config: A BERT configuration object
-        gpt_config: A GPT configuration object
+        gpt_config: Optional. A GPT configuration object
     """
     bert_config: BertConfig
-    gpt_config: OpenAIGPTConfig
+    gpt_config: Optional[OpenAIGPTConfig] = None
+
+
+@dataclass
+class RnnArgs(DeeplArgs):
+    """A dataclass for RNN decoder arguments
+
+    Fields:
+        num_rnn_layers: Number of layers in a deep RNN. Defaults to 2
+        hidden_size: RNN hidden size. Defaults to 768
+        vocab_size: Number of elements in the vocabulary. Defaults to 32001
+        initializer_dev: Stddev in the `TruncatedNormal` initializer (for both RNN and dense). Defaults to 0.02
+        layernorm_eps: Epsilon parameter for layer normalization. Defaults to 1e-12
+    """
+    num_rnn_layers: int = 2
+    hidden_size: int = 2
+    vocab_size: int = 32001
+    initializer_dev: float = 0.02
+    layernorm_eps: float = 1e-12
+
+    @classmethod
+    def collect_from_dict(cls, args_dict: Mapping[str, Any]) -> DeeplArgs:
+        """Override the parent method so that the arguments can be collected from a sub-dictionary"""
+        if (subdict_key := "rnn_config") in args_dict.keys():
+            result = super().collect_from_dict(args_dict[subdict_key])
+        else:
+            result = super().collect_from_dict(args_dict)
+        return result
 
 
 @dataclass

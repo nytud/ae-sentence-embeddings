@@ -9,8 +9,25 @@ from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 
 from ae_sentence_embeddings.models import SentVaeEncoder, SentAeDecoder, SentAeEncoder
-from ae_sentence_embeddings.layers import VaeSampling
+from ae_sentence_embeddings.layers import VaeSampling, AeGruDecoder
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
+from ae_sentence_embeddings.argument_handling import RnnArgs
+
+
+@tf.function
+def _latent_loss(mean: tf.Tensor, log_var: tf.Tensor, attn_mask: tf.Tensor) -> tf.Tensor:
+    """Calculate VAE latent loss
+
+    Args:
+        mean: The Gaussian mean vector
+        log_var: The Gaussian variance vector
+        attn_mask: Attention mask, which is necessary to calculate a normalizing constant
+    """
+    latent_loss = -0.1 * tf.reduce_sum(1 + log_var - tf.exp(log_var) - tf.square(mean), axis=-1)
+    norm_nominator = tf.cast(tf.reduce_sum(attn_mask, axis=-1), mean.dtype)
+    norm_denominator = tf.cast(tf.shape(mean)[-1], mean.dtype)
+    norm_const = tf.divide(norm_nominator, norm_denominator)
+    return tf.reduce_mean(tf.multiply(latent_loss, norm_const))
 
 
 class BaseAe(KModel):
@@ -35,8 +52,8 @@ class BaseAe(KModel):
             initializer_range=self.enc_config.initializer_range
         )
         self.dec_embedding = TFSharedEmbeddings(
-            vocab_size=self.enc_config.vocab_size,
-            hidden_size=self.enc_config.hidden_size,
+            vocab_size=self.dec_config.vocab_size,
+            hidden_size=self.dec_config.n_embd,
             initializer_range=self.enc_config.initializer_range
         )
         self.decoder = SentAeDecoder(self.dec_config)
@@ -116,21 +133,6 @@ class TransformerVae(BaseAe):
         self.encoder = SentVaeEncoder(self.enc_config)
         self.sampler = VaeSampling()
 
-    @staticmethod
-    def _latent_loss(mean: tf.Tensor, log_var: tf.Tensor, attn_mask: tf.Tensor) -> tf.Tensor:
-        """Calculate VAE latent loss
-
-        Args:
-            mean: The Gaussian mean vector
-            log_var: The Gaussian variance vector
-            attn_mask: Attention mask, which is necessary to calculate a normalizing constant
-        """
-        latent_loss = -0.1 * tf.reduce_sum(1 + log_var - tf.exp(log_var) - tf.square(mean), axis=-1)
-        norm_nominator = tf.cast(tf.reduce_sum(attn_mask, axis=-1), mean.dtype)
-        norm_denominator = tf.cast(tf.shape(mean)[-1], mean.dtype)
-        norm_const = tf.divide(norm_nominator, norm_denominator)
-        return tf.reduce_mean(tf.multiply(latent_loss, norm_const))
-
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
         """Call the full model
 
@@ -146,7 +148,7 @@ class TransformerVae(BaseAe):
         dec_attn_mask = make_decoder_inputs(enc_attn_mask)
         enc_embeddings = self.enc_embedding(input_ids, mode="embedding")
         mean, log_var, _ = self.encoder((enc_embeddings, enc_attn_mask), training=training)
-        self.add_loss(self._latent_loss(mean, log_var, attn_mask=enc_attn_mask))
+        self.add_loss(_latent_loss(mean, log_var, attn_mask=enc_attn_mask))
         sent_embedding = self.sampler((mean, log_var))
         logits = self._call_decoder(
             sent_embedding=sent_embedding,
@@ -154,4 +156,49 @@ class TransformerVae(BaseAe):
             dec_attn_mask=dec_attn_mask,
             training=training
         )
+        return logits
+
+
+class BertRnnVae(KModel):
+    """A VAE with a Bert encoder and an RNN decoder"""
+
+    def __init__(self, enc_config: BertConfig, rnn_config: RnnArgs, **kwargs):
+        if enc_config.vocab_size != rnn_config.vocab_size or enc_config.hidden_size != rnn_config.hidden_size:
+            raise ValueError("Vocab size and hidden size should be the same in the encoder and the decoder")
+        super().__init__(**kwargs)
+        self.enc_config = enc_config
+        self.dec_config = rnn_config
+        self.enc_embedding = TFSharedEmbeddings(
+            vocab_size=self.enc_config.vocab_size,
+            hidden_size=self.enc_config.hidden_size,
+            initializer_range=self.enc_config.initializer_range
+        )
+        self.dec_embedding = TFSharedEmbeddings(
+            vocab_size=self.dec_config.vocab_size,
+            hidden_size=self.dec_config.hidden_size,
+            initializer_range=self.enc_config.initializer_range
+        )
+        self.encoder = SentVaeEncoder(self.enc_config)
+        self.sampler = VaeSampling()
+        self.decoder = AeGruDecoder(**self.dec_config.to_dict())
+
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
+        """Call the full model
+
+        Args:
+            inputs: A tensor of input token IDs and a tensor of attention mask
+            training: Specifies whether the model is being used in ae_training mode
+            mask: Additional mask tensor. This will not be used
+
+        Returns:
+            The logits of a probability distribution for next token prediction
+        """
+        input_ids, attn_mask = inputs
+        enc_embeddings = self.enc_embedding(input_ids, mode="embedding")
+        mean, log_var, _ = self.encoder((enc_embeddings, attn_mask), training=training)
+        self.add_loss(_latent_loss(mean, log_var, attn_mask=attn_mask))
+        sent_embedding = self.sampler((mean, log_var))
+        dec_embeddings = self.dec_embedding(input_ids, mode="embedding")
+        dec_hidden_state = self.decoder((sent_embedding, dec_embeddings, attn_mask))
+        logits = self.dec_embedding(dec_hidden_state, mode="linear")
         return logits
