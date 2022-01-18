@@ -74,7 +74,7 @@ class AeGruDecoder(tfl.Layer):
         hidden_state, embeddings, attention_mask = inputs
         attention_mask = tf.cast(attention_mask, 'bool')
         for rnn_layer in self.rnn:
-            embeddings, _ = rnn_layer(
+            embeddings, hidden_state = rnn_layer(
                 inputs=embeddings,
                 initial_state=hidden_state,
                 mask=attention_mask
