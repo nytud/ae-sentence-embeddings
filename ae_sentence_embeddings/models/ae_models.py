@@ -1,17 +1,15 @@
 """A module for defining Transformer-based AEs"""
 
-from typing import Tuple, Optional
+from typing import Tuple
 
 import tensorflow as tf
 from tensorflow.keras import Model as KModel
-from transformers.modeling_tf_utils import TFSharedEmbeddings
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 
-from ae_sentence_embeddings.models import SentVaeEncoder, SentAeDecoder, SentAeEncoder
-from ae_sentence_embeddings.layers import VaeSampling, AeGruDecoder
-from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
 from ae_sentence_embeddings.argument_handling import RnnArgs
+from ae_sentence_embeddings.layers import VaeSampling
+from ae_sentence_embeddings.models import SentVaeEncoder, SentAeDecoder, SentAeEncoder, SentAeGRUDecoder
 
 
 @tf.function
@@ -46,37 +44,7 @@ class BaseAe(KModel):
         super().__init__(**kwargs)
         self.enc_config = enc_config
         self.dec_config = dec_config
-        self.enc_embedding = TFSharedEmbeddings(
-            vocab_size=self.enc_config.vocab_size,
-            hidden_size=self.enc_config.hidden_size,
-            initializer_range=self.enc_config.initializer_range
-        )
-        self.dec_embedding = TFSharedEmbeddings(
-            vocab_size=self.dec_config.vocab_size,
-            hidden_size=self.dec_config.n_embd,
-            initializer_range=self.enc_config.initializer_range
-        )
         self.decoder = SentAeDecoder(self.dec_config)
-
-    def _call_decoder(self, sent_embedding: tf.Tensor, input_ids: tf.Tensor,
-                      dec_attn_mask: tf.Tensor, training: Optional[bool]) -> tf.Tensor:
-        """Call the decoder
-
-        Args:
-            sent_embedding: A sentence embedding tensor
-            input_ids: A tensor of input token IDs
-            dec_attn_mask: A tensor of decoder attention mask
-            training: The training mode
-
-        Returns:
-            A tensor of logits
-
-        """
-        dec_embeddings = self.dec_embedding(input_ids[:, 1:], mode="embedding")
-        dec_embeddings = tf.concat([tf.expand_dims(sent_embedding, axis=1), dec_embeddings], axis=1)
-        dec_output = self.decoder((dec_embeddings, dec_attn_mask), training=training)
-        logits = self.dec_embedding(dec_output, mode="linear")
-        return logits
 
 
 class TransformerAe(BaseAe):
@@ -105,16 +73,9 @@ class TransformerAe(BaseAe):
             The logits of a probability distribution for next token prediction
 
         """
-        input_ids, enc_attn_mask = inputs
-        dec_attn_mask = make_decoder_inputs(enc_attn_mask)
-        enc_embeddings = self.enc_embedding(input_ids, mode="embedding")
-        sent_embedding, _ = self.encoder((enc_embeddings, enc_attn_mask), training=training)
-        logits = self._call_decoder(
-            sent_embedding=sent_embedding,
-            input_ids=input_ids,
-            dec_attn_mask=dec_attn_mask,
-            training=training
-        )
+        input_ids, attn_mask = inputs
+        sent_embedding, _ = self.encoder((input_ids, attn_mask), training=training)
+        logits = self.decoder(inputs=(sent_embedding, input_ids, attn_mask), training=training)
         return logits
 
 
@@ -144,18 +105,11 @@ class TransformerVae(BaseAe):
         Returns:
             The logits of a probability distribution for next token prediction
         """
-        input_ids, enc_attn_mask = inputs
-        dec_attn_mask = make_decoder_inputs(enc_attn_mask)
-        enc_embeddings = self.enc_embedding(input_ids, mode="embedding")
-        mean, log_var, _ = self.encoder((enc_embeddings, enc_attn_mask), training=training)
-        self.add_loss(_latent_loss(mean, log_var, attn_mask=enc_attn_mask))
+        input_ids, attn_mask = inputs
+        mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
+        self.add_loss(_latent_loss(mean, log_var, attn_mask=attn_mask))
         sent_embedding = self.sampler((mean, log_var))
-        logits = self._call_decoder(
-            sent_embedding=sent_embedding,
-            input_ids=input_ids,
-            dec_attn_mask=dec_attn_mask,
-            training=training
-        )
+        logits = self.decoder(inputs=(sent_embedding, input_ids, attn_mask), training=training)
         return logits
 
 
@@ -168,19 +122,9 @@ class BertRnnVae(KModel):
         super().__init__(**kwargs)
         self.enc_config = enc_config
         self.dec_config = rnn_config
-        self.enc_embedding = TFSharedEmbeddings(
-            vocab_size=self.enc_config.vocab_size,
-            hidden_size=self.enc_config.hidden_size,
-            initializer_range=self.enc_config.initializer_range
-        )
-        self.dec_embedding = TFSharedEmbeddings(
-            vocab_size=self.dec_config.vocab_size,
-            hidden_size=self.dec_config.hidden_size,
-            initializer_range=self.enc_config.initializer_range
-        )
         self.encoder = SentVaeEncoder(self.enc_config)
         self.sampler = VaeSampling()
-        self.decoder = AeGruDecoder(**self.dec_config.to_dict())
+        self.decoder = SentAeGRUDecoder(self.dec_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
         """Call the full model
@@ -194,11 +138,8 @@ class BertRnnVae(KModel):
             The logits of a probability distribution for next token prediction
         """
         input_ids, attn_mask = inputs
-        enc_embeddings = self.enc_embedding(input_ids, mode="embedding")
-        mean, log_var, _ = self.encoder((enc_embeddings, attn_mask), training=training)
+        mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
         self.add_loss(_latent_loss(mean, log_var, attn_mask=attn_mask))
         sent_embedding = self.sampler((mean, log_var))
-        dec_embeddings = self.dec_embedding(input_ids, mode="embedding")
-        dec_hidden_state = self.decoder((sent_embedding, dec_embeddings, attn_mask))
-        logits = self.dec_embedding(dec_hidden_state, mode="linear")
+        logits = self.decoder((sent_embedding, input_ids, attn_mask), training=training)
         return logits

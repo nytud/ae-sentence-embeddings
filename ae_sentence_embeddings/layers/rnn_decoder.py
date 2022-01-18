@@ -16,6 +16,7 @@ class AeGruDecoder(tfl.Layer):
             hidden_size: int = 768,
             initializer_dev: float = 0.02,
             layernorm_eps: float = 1e-12,
+            dropout_rate: float = 0.1,
             **kwargs) -> None:
         """
 
@@ -24,6 +25,7 @@ class AeGruDecoder(tfl.Layer):
             hidden_size: Hidden size in the RNN and dense layers. Defaults to 768
             initializer_dev: `TruncatedNormal` kernel initializer deviation. Defaults to 0.02
             layernorm_eps: Layer normalization epsilon parameter. Defaults to 1e-12
+            dropout_rate: A dropout rate between 0 and 1. Defaults to 0.1
             **kwargs: Parent class keyword arguments
         """
         super().__init__(**kwargs)
@@ -31,18 +33,19 @@ class AeGruDecoder(tfl.Layer):
         self.hidden_size = hidden_size
         self.initializer_dev = initializer_dev
         self.layernorm_eps = layernorm_eps
+        self.dropout_rate = dropout_rate
         self.rnn = [tfl.GRU(
-            units=self.num_rnn_layers,
+            units=self.hidden_size,
             activation='gelu',
             recurrent_activation='gelu',
             kernel_initializer=TruncatedNormal(stddev=self.initializer_dev),
             recurrent_initializer=TruncatedNormal(stddev=self.initializer_dev),
-            recurrent_dropout=0.1,
+            recurrent_dropout=self.dropout_rate,
             return_sequences=True,
             return_state=True
         ) for _ in range(self.num_rnn_layers)]
         self.intermediate_dense = tfl.Dense(
-            units=self.hidden_size*4,
+            units=self.hidden_size*2,
             activation='gelu',
             kernel_initializer=TruncatedNormal(stddev=self.initializer_dev),
             input_shape=(None, None, self.hidden_size)
@@ -51,9 +54,9 @@ class AeGruDecoder(tfl.Layer):
             units=self.hidden_size,
             activation='gelu',
             kernel_initializer=TruncatedNormal(stddev=self.initializer_dev),
-            input_shape=(None, None, self.hidden_size*4)
+            input_shape=(None, None, self.hidden_size*2)
         )
-        self.dropout = tfl.Dropout(0.1)
+        self.dropout = tfl.Dropout(self.dropout_rate)
         self.layernorm = tfl.LayerNormalization(epsilon=self.layernorm_eps)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], *args, **kwargs) -> tf.Tensor:
@@ -71,7 +74,7 @@ class AeGruDecoder(tfl.Layer):
         hidden_state, embeddings, attention_mask = inputs
         attention_mask = tf.cast(attention_mask, 'bool')
         for rnn_layer in self.rnn:
-            embeddings = rnn_layer(
+            embeddings, _ = rnn_layer(
                 inputs=embeddings,
                 initial_state=hidden_state,
                 mask=attention_mask
@@ -91,5 +94,6 @@ class AeGruDecoder(tfl.Layer):
             "num_rnn_layers": self.num_rnn_layers,
             "hidden_size": self.hidden_size,
             "initializer_dev": self.initializer_dev,
-            "layernorm_eps": self.layernorm_eps
+            "layernorm_eps": self.layernorm_eps,
+            "dropout_rate": self.dropout_rate
         }

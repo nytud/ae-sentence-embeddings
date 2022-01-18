@@ -23,7 +23,6 @@ def process_attention_mask(
 
     Returns:
        The modified attention mask tensor
-
     """
     attention_mask_shape = shape_list(attention_mask)
     extended_attention_mask = tf.reshape(attention_mask, (attention_mask_shape[0], 1, 1, attention_mask_shape[1]))
@@ -35,7 +34,7 @@ def process_attention_mask(
 
 
 def make_decoder_inputs(input_tensor: tf.Tensor, pad_value: int = 0) -> tf.Tensor:
-    """Modify attention mask or input token IDS so that the decoder can use them correctly.
+    """Modify attention mask so that the decoder can use it correctly.
     This means removing the first column and appending a new column filled with `pad_value`
 
     Args:
@@ -44,7 +43,6 @@ def make_decoder_inputs(input_tensor: tf.Tensor, pad_value: int = 0) -> tf.Tenso
 
     Returns:
         The modified tensor of the same shape as `input_tensor`
-
     """
     pad_col = tf.zeros((tf.shape(input_tensor)[0], 1), dtype=input_tensor.dtype) + pad_value
     return tf.concat([input_tensor[:, 1:], pad_col], axis=-1)
@@ -65,7 +63,6 @@ def make_dummy_bert_inputs(
 
     Returns:
         A dictionary with inputs required by HuggingFace BERT layers
-
     """
     input_shape = shape_list(input_tensor)
     head_mask = [None] * num_hidden_layers

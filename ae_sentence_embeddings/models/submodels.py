@@ -8,14 +8,17 @@ import tensorflow as tf
 from tensorflow.keras import Model as KModel
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
+from transformers.modeling_tf_utils import TFSharedEmbeddings
 
 from ae_sentence_embeddings.layers import (
     AeTransformerEncoder,
     AeTransformerDecoder,
     PostPoolingLayer,
-    AveragePoolingLayer
+    AveragePoolingLayer,
+    AeGruDecoder
 )
-from ae_sentence_embeddings.modeling_tools import process_attention_mask
+from ae_sentence_embeddings.modeling_tools import process_attention_mask, make_decoder_inputs
+from ae_sentence_embeddings.argument_handling import RnnArgs
 
 
 class SentAeEncoder(KModel):
@@ -30,6 +33,11 @@ class SentAeEncoder(KModel):
         """
         super().__init__(**kwargs)
         self.config = config
+        self.embedding_layer = TFSharedEmbeddings(
+            vocab_size=self.config.vocab_size,
+            hidden_size=self.config.hidden_size,
+            initializer_range=self.config.initializer_range
+        )
         self.transformer_encoder = AeTransformerEncoder(self.config)
         self.pooling = AveragePoolingLayer()
 
@@ -38,7 +46,7 @@ class SentAeEncoder(KModel):
         """Call the encoder
 
         Args:
-            inputs: Embedding tensor with shape `(batch_size, sequence_length, hidden_size)`
+            inputs: Input ID tensor with shape `(batch_size, sequence_length)`
                     and attention mask with shape `(batch_size, sequence_length)`
             training: Specifies whether the model is being used in ae_training mode
             mask: Additional mask tensor. This will not be used
@@ -47,11 +55,12 @@ class SentAeEncoder(KModel):
             A pooled tensor and the Transformer encoder outputs
 
         """
-        embeddings, attention_mask = inputs
-        mod_attention_mask = process_attention_mask(attention_mask, embedding_dtype=embeddings.dtype)
+        input_ids, attention_mask = inputs
+        embeddings = self.embedding_layer(input_ids, mode="embedding")
+        attention_mask = process_attention_mask(attention_mask, embedding_dtype=embeddings.dtype)
         encoder_outputs = self.transformer_encoder(
             hidden_states=embeddings,
-            attention_mask=mod_attention_mask,
+            attention_mask=attention_mask,
             head_mask=[None] * self.config.num_hidden_layers,
             past_key_values=[None] * self.config.num_hidden_layers,
             encoder_hidden_states=None,
@@ -84,7 +93,7 @@ class SentVaeEncoder(SentAeEncoder):
         """Call the encoder
 
         Args:
-            inputs: Embedding tensor with shape `(batch_size, sequence_length, hidden_size)`
+            inputs: Input IDs tensor with shape `(batch_size, sequence_length)`
                     and attention mask with shape `(batch_size, sequence_length)`
             training: Specifies whether the model is being used in ae_training mode
             mask: Additional mask tensor. This will not be used
@@ -110,20 +119,73 @@ class SentAeDecoder(KModel):
         super().__init__(**kwargs)
         self.config = config
         self.transformer_decoder = AeTransformerDecoder(self.config)
+        self.embedding_layer = TFSharedEmbeddings(
+            vocab_size=self.config.vocab_size,
+            hidden_size=self.config.n_embd,
+            initializer_range=self.config.initializer_range
+        )
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
         """Call the decoder
 
         Args:
-            inputs: A hidden state tensor of shape `(batch_size, sequence_length, hidden_size)`
-                    and an attention mask of shape `(batch_size, sequence_length)`
+            inputs: An input embedding tensor of shape `(batch_size, hidden_size)`.
+                    an input token ID tensor of shape `(batch_size, sequence_length, hidden_size)` and
+                    an attention mask tensor of shape `(batch_size, sequence_length)`
             training: Specifies whether the model is being used in ae_training mode
             mask: Additional mask tensor. This will not be used
 
         Returns:
-            The last hidden state
+            Logits for next token prediction
         """
-        hidden_state, attention_mask = inputs
-        attention_mask = process_attention_mask(attention_mask, embedding_dtype=hidden_state.dtype)
-        hidden_output = self.transformer_decoder((hidden_state, attention_mask), training=training)
-        return hidden_output
+        sent_embeddings, input_ids, attention_mask = inputs
+        token_embeddings = self.embedding_layer(input_ids[:, 1:], mode="embedding")
+        attention_mask = process_attention_mask(
+            attention_mask=make_decoder_inputs(attention_mask),
+            embedding_dtype=token_embeddings.dtype
+        )
+        encodings = tf.concat([tf.expand_dims(sent_embeddings, axis=1), token_embeddings], axis=1)
+        hidden_output = self.transformer_decoder((encodings, attention_mask), training=training)
+        logits = self.embedding_layer(hidden_output, mode="linear")
+        return logits
+
+
+class SentAeGRUDecoder(KModel):
+    """A GRU-based full decoder"""
+
+    def __init__(self, config: RnnArgs, **kwargs) -> None:
+        """Layer initializer
+
+        Args:
+            config: An RNN configuration dataclass object
+            **kwargs: Keyword arguments for the parent class
+        """
+        super().__init__(**kwargs)
+        self.config = config
+        self.decoder = AeGruDecoder(**config.to_dict())
+        self.embedding_layer = TFSharedEmbeddings(
+            vocab_size=self.config.vocab_size,
+            hidden_size=self.config.hidden_size,
+            initializer_range=self.config.initializer_dev
+        )
+
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
+        """Call the decoder
+
+        Args:
+            inputs: An input embedding tensor of shape `(batch_size, hidden_size)`.
+                    an input token ID tensor of shape `(batch_size, sequence_length, hidden_size)` and
+                    an attention mask tensor of shape `(batch_size, sequence_length)`
+            training: Specifies whether the model is being used in ae_training mode
+            mask: Additional mask tensor. This will not be used
+
+        Returns:
+            Logits for next token prediction
+        """
+        sent_embeddings, input_ids, attention_mask = inputs
+        attention_mask = make_decoder_inputs(attention_mask)
+        token_embeddings = self.embedding_layer(input_ids, mode="embedding")
+        hidden_output = self.decoder((sent_embeddings, token_embeddings, attention_mask),
+                                     training=training)
+        logits = self.embedding_layer(hidden_output, mode="linear")
+        return logits
