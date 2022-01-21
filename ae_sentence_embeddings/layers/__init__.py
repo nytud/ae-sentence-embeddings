@@ -2,7 +2,7 @@ from .transformer_ae_layers import (
     AeTransformerDecoder,
     AeTransformerEncoder,
     VaeSampling,
-    PostPoolingLayer,
-    AveragePoolingLayer
+    PostPoolingLayer
 )
+from .pooling import AveragePoolingLayer
 from .rnn_decoder import AeGruDecoder
