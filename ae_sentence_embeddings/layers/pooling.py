@@ -43,9 +43,9 @@ class CLSPlusSEPPooling(tfl.Layer):
             A 2D pooled tensor of shape `(batch_size, 2*hidden_size)`
         """
         hidden_state, attn_mask = inputs
-        row_indices = tf.range(tf.shape(attn_mask)[-1])
-        sep_indices = tf.reduce_sum(attn_mask, axis=-1)
-        indices = tf.expand_dims(tf.stack([row_indices, sep_indices], axis=1), axis=1)
-        sep_rows = tf.squeeze(tf.gather_nd(hidden_state, indices))
-        pooled_tensor = tf.concat(hidden_state[:, 0, :], sep_rows, axis=1)
+        sent_indices = tf.range(tf.shape(attn_mask)[0])
+        sep_indices = tf.reduce_sum(attn_mask, axis=-1) - 1
+        indices = tf.stack([sent_indices, sep_indices], axis=1)
+        sep_rows = tf.gather_nd(hidden_state, indices)
+        pooled_tensor = tf.concat([hidden_state[:, 0, :], sep_rows], axis=1)
         return pooled_tensor

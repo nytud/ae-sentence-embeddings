@@ -4,5 +4,5 @@ from .transformer_ae_layers import (
     VaeSampling,
     PostPoolingLayer
 )
-from .pooling import AveragePoolingLayer
+from .pooling import AveragePoolingLayer, CLSPlusSEPPooling
 from .rnn_decoder import AeGruDecoder
