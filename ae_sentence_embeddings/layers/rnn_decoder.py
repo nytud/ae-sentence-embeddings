@@ -4,7 +4,6 @@ from typing import Tuple, Dict, Any
 
 import tensorflow as tf
 from tensorflow.keras import layers as tfl
-from tensorflow.keras.initializers import TruncatedNormal
 
 
 class AeGruDecoder(tfl.Layer):
@@ -14,7 +13,6 @@ class AeGruDecoder(tfl.Layer):
             self,
             num_rnn_layers: int = 2,
             hidden_size: int = 768,
-            initializer_dev: float = 0.02,
             layernorm_eps: float = 1e-12,
             dropout_rate: float = 0.1,
             **kwargs) -> None:
@@ -23,7 +21,6 @@ class AeGruDecoder(tfl.Layer):
         Args:
             num_rnn_layers: Number of RNN layers. Defaults to 2
             hidden_size: Hidden size in the RNN and dense layers. Defaults to 768
-            initializer_dev: `TruncatedNormal` kernel initializer deviation. Defaults to 0.02
             layernorm_eps: Layer normalization epsilon parameter. Defaults to 1e-12
             dropout_rate: A dropout rate between 0 and 1. Defaults to 0.1
             **kwargs: Parent class keyword arguments
@@ -31,29 +28,24 @@ class AeGruDecoder(tfl.Layer):
         super().__init__(**kwargs)
         self.num_rnn_layers = num_rnn_layers
         self.hidden_size = hidden_size
-        self.initializer_dev = initializer_dev
         self.layernorm_eps = layernorm_eps
         self.dropout_rate = dropout_rate
         self.rnn = [tfl.GRU(
             units=self.hidden_size,
-            activation='gelu',
-            recurrent_activation='gelu',
-            kernel_initializer=TruncatedNormal(stddev=self.initializer_dev),
-            recurrent_initializer=TruncatedNormal(stddev=self.initializer_dev),
             recurrent_dropout=self.dropout_rate,
             return_sequences=True,
             return_state=True
         ) for _ in range(self.num_rnn_layers)]
         self.intermediate_dense = tfl.Dense(
             units=self.hidden_size*2,
-            activation='gelu',
-            kernel_initializer=TruncatedNormal(stddev=self.initializer_dev),
+            activation='tanh',
+            kernel_initializer='glorot_uniform',
             input_shape=(None, None, self.hidden_size)
         )
         self.out_dense = tfl.Dense(
             units=self.hidden_size,
-            activation='gelu',
-            kernel_initializer=TruncatedNormal(stddev=self.initializer_dev),
+            activation='tanh',
+            kernel_initializer='glorot_uniform',
             input_shape=(None, None, self.hidden_size*2)
         )
         self.dropout = tfl.Dropout(self.dropout_rate)
@@ -93,7 +85,6 @@ class AeGruDecoder(tfl.Layer):
             **base_config,
             "num_rnn_layers": self.num_rnn_layers,
             "hidden_size": self.hidden_size,
-            "initializer_dev": self.initializer_dev,
             "layernorm_eps": self.layernorm_eps,
             "dropout_rate": self.dropout_rate
         }

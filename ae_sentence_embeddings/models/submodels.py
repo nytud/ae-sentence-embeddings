@@ -162,11 +162,14 @@ class SentAeGRUDecoder(KModel):
         """
         super().__init__(**kwargs)
         self.config = config
-        self.decoder = AeGruDecoder(**config.to_dict())
+        config_dict = config.to_dict()
+        vocab_size = config_dict.pop("vocab_size")
+        embedding_init_range = config_dict.pop("initializer_dev")
+        self.decoder = AeGruDecoder(**config_dict)
         self.embedding_layer = TFSharedEmbeddings(
-            vocab_size=self.config.vocab_size,
+            vocab_size=vocab_size,
             hidden_size=self.config.hidden_size,
-            initializer_range=self.config.initializer_dev
+            initializer_range=embedding_init_range
         )
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
