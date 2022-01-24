@@ -14,18 +14,26 @@ class TFDatasetTest(tf.test.TestCase):
 
     def test_convert_to_tf_dataset(self) -> None:
         """Test conversion of a `datasets.Dataset` object to a TensorFlow dataset"""
-        data = {
+        data_mono = {
             "text": ["This is a dummy sentence.", "Yet another dummy input."],
             "input_ids": [[101, 42, 14, 678, 6, 1017, 9, 102], [101, 53, 202, 678, 98, 9, 102]],
             "attention_mask": [[1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1]],
             "targets": [[42, 14, 678, 6, 1017, 9, 102, 0], [53, 202, 678, 98, 9, 102, 0]]
         }
-        dataset = HgfDataset.from_dict(data)
-        tf_dataset = convert_to_tf_dataset(dataset)
-        example = next(iter(tf_dataset))
-        print(f"A data point is: {example}")
-        self.assertIsInstance(tf_dataset, tf.data.Dataset)
-        self.assertEqual(2, len(example))
+        data_bi = {
+            **data_mono,
+            "text_other": ["Ez is egy probamondat", "Ahogyan ez is itt."],
+            "input_ids_other": [[101, 56, 789, 85, 102], [101, 79, 1022, 77, 9, 102]],
+            "attention_mask_other": [[1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1]],
+            "targets_other": [[56, 789, 85, 102], [79, 1022, 77, 9, 102]]
+        }
+        for data in (data_mono, data_bi):
+            dataset = HgfDataset.from_dict(data)
+            tf_dataset = convert_to_tf_dataset(dataset)
+            example = next(iter(tf_dataset))
+            print(f"A data point is: {example}")
+            self.assertIsInstance(tf_dataset, tf.data.Dataset)
+            self.assertEqual(2, len(example))
 
     def test_pad_and_batch(self) -> None:
         """Test padding and batching a TensorFlow dataset"""
