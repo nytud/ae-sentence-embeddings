@@ -59,7 +59,7 @@ class DataStreamArgs(DeeplArgs):
                                by the function that requires the fields of this dataclass as arguments.
     """
     input_padding: Union[Sequence[int], int] = (0, 0)
-    target_padding: int = -1
+    target_padding: Union[Sequence[int], int] = -1
     batch_size: int = 32
     shuffling_buffer_size: Optional[int] = None
     num_buckets: Optional[int] = None
