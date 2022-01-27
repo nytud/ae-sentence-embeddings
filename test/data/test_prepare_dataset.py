@@ -53,7 +53,7 @@ class TFDatasetTest(tf.test.TestCase):
         mono_data_dict[text_key] = ["ab", "cd", "ef", "gh"]
 
         bi_data_size = (6, 4, 15)
-        bi_seq_end_ids = np_array([[5, 8, 11, 15]] * 3 + [[3, 7, 12, 15]] * 3)
+        bi_seq_end_ids = np_array([[5, 8, 11, 15]] * 3 + [[3, 7, 12, 9]] * 3)
         bi_data = _create_data_batches(bi_data_size, bi_seq_end_ids)
         bi_keys = mono_keys + tuple(mono_key + "_other" for mono_key in mono_keys)
         bi_data_dict = {bi_key: batch for bi_key, batch in zip(bi_keys, bi_data)}
@@ -132,8 +132,11 @@ class TFDatasetTest(tf.test.TestCase):
         tf_dataset = tf.data.Dataset.from_generator(data_gen, output_signature=out_spec)
         tf_dataset = pad_and_batch(tf_dataset=tf_dataset, data_stream_args=data_stream_args)
         outputs = list(iter(tf_dataset))
+        lang1_shape = outputs[0][0][0].shape
+        lang2_shape = outputs[0][1][1].shape
         self.assertEqual(3, len(outputs), msg=f"Output tensors are:\n{outputs}")
-        # self.assertAllEqual([(2, 8), (1, 11), (1, 15)], [data_tensors[0][0].shape for data_tensors in outputs])
+        self.assertAllEqual([(2, 8), (2, 8)], [lang1_shape, lang2_shape])
+        self.assertAllEqual([(2, 8), (1, 12), (1, 15)], [data_tensors[0][0].shape for data_tensors in outputs])
 
 
 if __name__ == '__main__':
