@@ -1,6 +1,6 @@
 """A module for preparing datasets for usage with TensorFlow/Keras"""
 
-from typing import Generator, Tuple, Optional, Iterable
+from typing import Generator, Tuple, Optional, Iterable, Union
 from copy import deepcopy
 from functools import partial
 
@@ -129,6 +129,33 @@ def pad_and_batch(
             drop_remainder=drop_remainder
         )
     return tf_dataset
+
+
+@tf.function
+def post_batch_multilingual(
+        feature_tensors: Tuple[tf.Tensor, ...],
+        target_tensors: Tuple[tf.Tensor, ...]
+) -> Union[MultiLingTensorStruct, Tuple[Union[Tuple[tf.Tensor, ...], tf.Tensor], tf.Tensor]]:
+    """Reorganize padded batches of feature and target tensors. Every `2k`th and `2k-1`th (k=1,...)
+    tensor will be concatenated
+
+    Args:
+        feature_tensors: A tuple of feature tensors
+        target_tensors: A tuple of target tensors
+
+    Returns:
+        The new feature and target tensors. If the original batch consisted of N tensors, the new one will
+        consist of N/2 tensors
+    """
+    outputs = []
+    for tensor_tuple in (feature_tensors, target_tensors):
+        new_tensors = []
+        for i in range(0, len(tensor_tuple), 2):
+            new_tensor = tf.concat([tensor_tuple[i], tensor_tuple[i+1]], axis=0)
+            new_tensors.append(new_tensor)
+        new_tensors = new_tensors[0] if len(new_tensors) == 1 else tuple(new_tensors)
+        outputs.append(new_tensors)
+    return tuple(outputs)
 
 
 def get_train_and_validation(

@@ -10,7 +10,7 @@ from datasets import Dataset as HgfDataset
 from numpy.random import randint
 from numpy import ndarray, array as np_array
 
-from ae_sentence_embeddings.data import convert_to_tf_dataset, pad_and_batch
+from ae_sentence_embeddings.data import convert_to_tf_dataset, pad_and_batch, post_batch_multilingual
 from ae_sentence_embeddings.argument_handling import DataStreamArgs
 
 
@@ -93,6 +93,20 @@ class TFDatasetTest(tf.test.TestCase):
             targets = target_vecs[0] if is_mono else tuple(target_vecs)
             yield tuple(feature_vecs), targets
 
+    def get_bilingual_datagen(self) -> tf.data.Dataset:
+        """Helper function: Set up a multilingual data generator"""
+        out_spec = ((tf.TensorSpec(shape=(None,), dtype=tf.int32),) * 4,
+                    (tf.TensorSpec(shape=(None,), dtype=tf.int32),) * 2)
+        data_gen = partial(self.data_gen, self.bi_data, False)
+        return tf.data.Dataset.from_generator(data_gen, output_signature=out_spec)
+
+    def get_monolingual_datagen(self) -> tf.data.Dataset:
+        """Helper function: Set up a monolingual data generator"""
+        out_spec = ((tf.TensorSpec(shape=(None,), dtype=tf.int32),) * 2,
+                    tf.TensorSpec(shape=(None,), dtype=tf.int32))
+        data_gen = partial(self.data_gen, self.mono_data, True)
+        return tf.data.Dataset.from_generator(data_gen, output_signature=out_spec)
+
     def test_convert_to_tf_dataset(self) -> None:
         """Test conversion of a `datasets.Dataset` object to a TensorFlow dataset"""
         for data in (self.mono_data, self.bi_data):
@@ -106,11 +120,7 @@ class TFDatasetTest(tf.test.TestCase):
     def test_pad_and_batch_mono(self) -> None:
         """Test padding and batching a monolingual TensorFlow dataset"""
         data_stream_args = DataStreamArgs(batch_size=2, num_buckets=2, first_bucket_boundary=9)
-        out_spec = ((tf.TensorSpec(shape=(None,), dtype=tf.int32),) * 2,
-                    tf.TensorSpec(shape=(None,), dtype=tf.int32))
-        data_gen = partial(self.data_gen, self.mono_data, True)
-
-        tf_dataset = tf.data.Dataset.from_generator(data_gen, output_signature=out_spec)
+        tf_dataset = self.get_monolingual_datagen()
         tf_dataset = pad_and_batch(tf_dataset=tf_dataset, data_stream_args=data_stream_args)
         outputs = list(iter(tf_dataset))
         self.assertEqual(3, len(outputs), msg=f"Output tensors are:\n{outputs}")
@@ -125,11 +135,7 @@ class TFDatasetTest(tf.test.TestCase):
             input_padding=(0, 0, 0, 0),
             first_bucket_boundary=9
         )
-        out_spec = ((tf.TensorSpec(shape=(None,), dtype=tf.int32),) * 4,
-                    (tf.TensorSpec(shape=(None,), dtype=tf.int32),) * 2)
-        data_gen = partial(self.data_gen, self.bi_data, False)
-
-        tf_dataset = tf.data.Dataset.from_generator(data_gen, output_signature=out_spec)
+        tf_dataset = self.get_bilingual_datagen()
         tf_dataset = pad_and_batch(tf_dataset=tf_dataset, data_stream_args=data_stream_args)
         outputs = list(iter(tf_dataset))
         lang1_shape = outputs[0][0][0].shape
@@ -137,6 +143,22 @@ class TFDatasetTest(tf.test.TestCase):
         self.assertEqual(3, len(outputs), msg=f"Output tensors are:\n{outputs}")
         self.assertAllEqual([(2, 8), (2, 8)], [lang1_shape, lang2_shape])
         self.assertAllEqual([(2, 8), (1, 12), (1, 15)], [data_tensors[0][0].shape for data_tensors in outputs])
+
+    def test_post_batch_multilingual(self) -> None:
+        """Test batch reorganization for multilingual data"""
+        input_data = (([[1, 2], [3, 4]], [[-1, -2], [-3, -4]],
+                       [[5, 6], [7, 8]], [[-5, -6], [-7, -8]]),
+                      ([[9, 10], [11, 12]], [[-9, -10], [-11, -12]]))
+        tf_dataset = tf.data.Dataset.from_tensors(input_data)
+        new_dataset = tf_dataset.map(post_batch_multilingual)
+        outputs = next(iter(new_dataset))
+        expected_features, expected_targets = (
+            (tf.constant([[1, 2], [3, 4], [-1, -2], [-3, -4]]),
+             tf.constant([[5, 6], [7, 8], [-5, -6], [-7, -8]])),
+            tf.constant([[9, 10], [11, 12], [-9, -10], [-11, -12]])
+        )
+        self.assertAllEqual(expected_targets, outputs[1], msg=f"Targets are:\n{outputs[1]}")
+        self.assertAllEqual(expected_features, outputs[0], msg=f"Targets are:\n{outputs[0]}")
 
 
 if __name__ == '__main__':
