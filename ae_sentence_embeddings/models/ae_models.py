@@ -5,12 +5,12 @@ import pickle
 from warnings import warn
 
 import tensorflow as tf
-from tensorflow.keras import Model as KModel
+from tensorflow.keras import Model as KModel, layers as tfl
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 
 from ae_sentence_embeddings.argument_handling import RnnArgs
-from ae_sentence_embeddings.layers import VaeSampling
+from ae_sentence_embeddings.layers import VaeSampling, RandomSwapLayer
 from ae_sentence_embeddings.models import SentVaeEncoder, SentAeDecoder, SentAeEncoder, SentAeGRUDecoder
 
 
@@ -150,7 +150,7 @@ class TransformerVae(BaseAe):
 class BertRnnVae(BaseAe):
     """A VAE with a Bert encoder and an RNN decoder"""
 
-    def __init__(self, enc_config: BertConfig, rnn_config: RnnArgs, **kwargs):
+    def __init__(self, enc_config: BertConfig, rnn_config: RnnArgs, **kwargs) -> None:
         super().__init__(enc_config, rnn_config, **kwargs)
         self.encoder = SentVaeEncoder(self.enc_config)
         self.sampler = VaeSampling()
@@ -173,3 +173,17 @@ class BertRnnVae(BaseAe):
         sent_embedding = self.sampler((mean, log_var))
         logits = self.decoder((sent_embedding, input_ids, attn_mask), training=training)
         return logits
+
+
+class BertBiRnnVae(BaseAe):
+    """A Transformer-RNN VAE for bilingual training"""
+
+    def __init__(self, enc_config: BertConfig, rnn_config: RnnArgs, **kwargs) -> None:
+        super().__init__(enc_config, rnn_config, **kwargs)
+        self.encoder = SentVaeEncoder(self.enc_config)
+        self.sampler = VaeSampling()
+        self.splitter = tfl.Lambda(lambda x: tf.split(x, 2))
+        self.swapper = RandomSwapLayer()
+        self.cat = tfl.Lambda(lambda x1, x2: tf.concat([x1, x2], axis=0))
+        self.decoder1 = SentAeGRUDecoder(self.dec_config)
+        self.decoder2 = SentAeGRUDecoder(self.dec_config)
