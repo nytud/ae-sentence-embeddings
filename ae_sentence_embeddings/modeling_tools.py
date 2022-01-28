@@ -35,7 +35,8 @@ def process_attention_mask(
 
 def make_decoder_inputs(input_tensor: tf.Tensor, pad_value: int = 0) -> tf.Tensor:
     """Modify attention mask so that the decoder can use it correctly.
-    This means removing the first column and appending a new column filled with `pad_value`
+    This means removing the first column and appending a new column filled with `pad_value`.
+    This can also be applied to create decoder targets token IDs.
 
     Args:
         input_tensor: a tensor of shape `(batch_size, sequence_length)`
