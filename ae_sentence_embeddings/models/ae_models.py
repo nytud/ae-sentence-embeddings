@@ -1,6 +1,8 @@
 """A module for defining Transformer-based AEs"""
 
-from typing import Tuple
+from typing import Tuple, Union, Optional, Literal
+import pickle
+from warnings import warn
 
 import tensorflow as tf
 from tensorflow.keras import Model as KModel
@@ -31,7 +33,8 @@ def _latent_loss(mean: tf.Tensor, log_var: tf.Tensor, attn_mask: tf.Tensor) -> t
 class BaseAe(KModel):
     """Base class for Transformer AEs. Used for subclassing only"""
 
-    def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig, **kwargs) -> None:
+    def __init__(self, enc_config: BertConfig,
+                 dec_config: Union[OpenAIGPTConfig, RnnArgs], **kwargs) -> None:
         """Initialize the invariant AE layers that do not depend on the AE architecture choice
 
         Args:
@@ -44,7 +47,36 @@ class BaseAe(KModel):
         super().__init__(**kwargs)
         self.enc_config = enc_config
         self.dec_config = dec_config
-        self.decoder = SentAeDecoder(self.dec_config)
+
+    def checkpoint(self, weight_path: str, optimizer_path: Optional[str]) -> None:
+        """Save model and (optionally) optimizer weights.
+        This method uses the defaults arguments of the `save_weights` method
+
+        About saving the optimizer state see
+        https://stackoverflow.com/questions/49503748/save-and-load-model-optimizer-state
+        """
+        self.save_weights(weight_path)
+        if optimizer_path is not None:
+            symbolic_weights = getattr(self.optimizer, "weights", None)
+            if symbolic_weights is None:
+                warn("Optimizer weights were not found, so the optimizer state was not saved.")
+            else:
+                optimizer_weights = tf.keras.backend.batch_get_value(symbolic_weights)
+                with open(optimizer_path, 'wb') as optimizer_f:
+                    pickle.dump(optimizer_weights, optimizer_f)
+
+    def save_weights(
+            self,
+            filepath: str,
+            overwrite: bool = True,
+            save_format: Optional[Literal["tf", "h5"]] = None,
+            options: Optional[tf.train.CheckpointOptions] = None
+    ) -> None:
+        """Add a warning to the parent class method"""
+        warn("This method is useful for fully Keras serializable models. As it might not work as expected, "
+             "consider calling `model.save_weights` or `model.checkpoint`")
+        super().save(filepath, overwrite=overwrite, save_format=save_format,
+                     options=options)
 
 
 class TransformerAe(BaseAe):
@@ -60,6 +92,7 @@ class TransformerAe(BaseAe):
         """
         super().__init__(enc_config, dec_config, **kwargs)
         self.encoder = SentAeEncoder(self.enc_config)
+        self.decoder = SentAeDecoder(self.dec_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
         """Call the full model
@@ -93,6 +126,7 @@ class TransformerVae(BaseAe):
         super().__init__(enc_config, dec_config, **kwargs)
         self.encoder = SentVaeEncoder(self.enc_config)
         self.sampler = VaeSampling()
+        self.decoder = SentAeDecoder(self.dec_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
         """Call the full model
@@ -113,15 +147,11 @@ class TransformerVae(BaseAe):
         return logits
 
 
-class BertRnnVae(KModel):
+class BertRnnVae(BaseAe):
     """A VAE with a Bert encoder and an RNN decoder"""
 
     def __init__(self, enc_config: BertConfig, rnn_config: RnnArgs, **kwargs):
-        if enc_config.vocab_size != rnn_config.vocab_size or enc_config.hidden_size != rnn_config.hidden_size:
-            raise ValueError("Vocab size and hidden size should be the same in the encoder and the decoder")
-        super().__init__(**kwargs)
-        self.enc_config = enc_config
-        self.dec_config = rnn_config
+        super().__init__(enc_config, rnn_config, **kwargs)
         self.encoder = SentVaeEncoder(self.enc_config)
         self.sampler = VaeSampling()
         self.decoder = SentAeGRUDecoder(self.dec_config)

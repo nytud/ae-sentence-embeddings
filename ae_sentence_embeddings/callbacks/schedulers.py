@@ -43,4 +43,4 @@ class OneCycleScheduler(Callback):
                                             self.lr_args.learning_rate, self.lr_args.last_rate)
             tf.keras.backend.set_value(self.model.optimizer.learning_rate,
                                        lr_rate)
-        self.iteration += 1
+            self.iteration += 1

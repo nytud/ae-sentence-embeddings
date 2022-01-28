@@ -120,15 +120,18 @@ class SaveAndLogArgs(DeeplArgs):
     Fields:
         checkpoint_path: Model checkpoint path
         log_path: Tensorboard logging path
-        save_freq: `'epoch'` or integer. If `'epoch'`, checkpoints will be created after each epoch. If integer,
-                   the model will be saved after each `save_freq` iterations. Defaults to `\"epoch\"`
-        log_update_freq: `'batch'`, '`epoch`' or integer, `update_freq` parameter of `tf.keras.callbacks.TensorBoard`.
-                         Defaults to `\"epoch\"`
+        save_freq: `"epoch"` or integer. If `"epoch"`, checkpoints will be created after each epoch. If integer,
+                   the model will be saved after each `save_freq` iterations. Defaults to `"epoch"`
+        log_update_freq: `"batch"`, `"epoch"` or integer, `update_freq` parameter of `tf.keras.callbacks.TensorBoard`.
+                         Defaults to `"epoch"`
+        save_optimizer: Set to `True` if the optimizer state should be saved at each checkpoint.
+                        Defaults to `True`
     """
     checkpoint_path: str
     log_path: str
     save_freq: Union[str, int] = "epoch"
     log_update_freq: Union[str, int] = "epoch"
+    save_optimizer: bool = True
 
 
 @dataclass

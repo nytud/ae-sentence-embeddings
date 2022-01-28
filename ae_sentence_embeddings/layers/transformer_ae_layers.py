@@ -2,7 +2,7 @@
 
 from typing import Tuple
 import tensorflow as tf
-from tensorflow.keras import layers as tfl
+from tensorflow.keras import layers as tfl, backend as K
 from tensorflow.keras.initializers import TruncatedNormal
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.bert.modeling_tf_bert import TFBertEncoder
@@ -58,7 +58,7 @@ class VaeSampling(tfl.Layer):
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], *args, **kwargs) -> tf.Tensor:
         """Sample from a Gaussian"""
         mean, log_var = inputs
-        return tf.keras.backend.random_normal(tf.shape(log_var)) * tf.exp(log_var / 2) + mean
+        return K.random_normal(tf.shape(log_var)) * K.exp(log_var / 2) + mean
 
 
 @keras_serializable
@@ -86,5 +86,3 @@ class PostPoolingLayer(tfl.Layer):
         mean_tensor = self.post_pool_layernorm(self.post_pool_dropout(mean_tensor))
         logvar_tensor = self.post_pool_layernorm(self.post_pool_dropout(logvar_tensor))
         return mean_tensor, logvar_tensor
-
-
