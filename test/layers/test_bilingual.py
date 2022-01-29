@@ -44,7 +44,7 @@ class BilingLayerTest(tf.test.TestCase):
         swapper = RandomSwapLayer()
         results = []
         for _ in range(1000):
-            (pair11, pair12), _ = swapper((self.pair1, self.pair2), training=True)
+            pair11, pair12 = swapper((self.pair1,), training=True)[0]
             result = self.is_swapped((pair11, pair12), self.pair1)
             results.append(tf.cast(result, tf.int16))
         swapped_times = tf.reduce_sum(results)

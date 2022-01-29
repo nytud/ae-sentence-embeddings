@@ -99,7 +99,7 @@ class TransformerAe(BaseAe):
 
         Args:
             inputs: A tensor of input token IDs and a tensor of attention mask
-            training: Specifies whether the model is being used in ae_training mode
+            training: Specifies whether the model is being used in training mode
 
         Returns:
             The logits of a probability distribution for next token prediction
@@ -132,7 +132,7 @@ class TransformerVae(BaseAe):
 
         Args:
             inputs: A tensor of input token IDs and a tensor of attention mask
-            training: Specifies whether the model is being used in ae_training mode
+            training: Specifies whether the model is being used in training mode
 
         Returns:
             The logits of a probability distribution for next token prediction
@@ -159,7 +159,7 @@ class BertRnnVae(BaseAe):
 
         Args:
             inputs: A tensor of input token IDs and a tensor of attention mask
-            training: Specifies whether the model is being used in ae_training mode
+            training: Specifies whether the model is being used in training mode
 
         Returns:
             The logits of a probability distribution for next token prediction
@@ -190,7 +190,7 @@ class BertBiRnnVae(BaseAe):
 
         Args:
             inputs: A tensor of input token IDs and a tensor of attention mask
-            training: Specifies whether the model is being used in ae_training mode
+            training: Specifies whether the model is being used in training mode
 
         Returns:
             The logits of a probability distribution for next token prediction
@@ -198,11 +198,10 @@ class BertBiRnnVae(BaseAe):
         input_ids, attn_mask = inputs
         mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
         self.add_loss(_latent_loss(mean, log_var, attn_mask=attn_mask))
-        sents = self.splitter(self.sampler((mean, log_var)))
-        input_ids = self.splitter(input_ids)
-        attn_mask = self.splitter(attn_mask)
-        (sents1, sents2), (input_ids1, input_ids2), (attn_mask1, attn_mask2) = self.swapper((
-            sents, input_ids, attn_mask), training=training)
+        sents1, sents2 = self.splitter(self.sampler((mean, log_var)))
+        input_ids1, input_ids2 = self.splitter(input_ids)
+        attn_mask1, attn_mask2 = self.splitter(attn_mask)
+        sents1, sents2 = self.swapper(((sents1, sents2),), training=training)[0]
         logits1 = self.decoder1((sents1, input_ids1, attn_mask1), training=training)
         logits2 = self.decoder2((sents2, input_ids2, attn_mask2), training=training)
         logits = self.cat((logits1, logits2))

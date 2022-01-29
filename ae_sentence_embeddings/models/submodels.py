@@ -1,4 +1,4 @@
-"""A module for models that are intended to be used as layers in a more complex model during pre-ae_training.
+"""A module for models that are intended to be used as layers in a more complex model during pre-training.
 Defining them as a model allows to use them separately after pre-training
 """
 
@@ -58,7 +58,7 @@ class SentAeEncoder(KModel):
         Args:
             inputs: Input ID tensor with shape `(batch_size, sequence_length)`
                     and attention mask with shape `(batch_size, sequence_length)`
-            training: Specifies whether the model is being used in ae_training mode
+            training: Specifies whether the model is being used in training mode
 
         Returns:
             A pooled tensor and the Transformer encoder outputs
@@ -104,7 +104,7 @@ class SentVaeEncoder(SentAeEncoder):
         Args:
             inputs: Input IDs tensor with shape `(batch_size, sequence_length)`
                     and attention mask with shape `(batch_size, sequence_length)`
-            training: Specifies whether the model is being used in ae_training mode
+            training: Specifies whether the model is being used in training mode
 
         Returns:
             Two pooled tensors (mean and log variance for VAE sampling) and the Transformer encoder outputs
@@ -141,7 +141,7 @@ class SentAeDecoder(KModel):
             inputs: An input embedding tensor of shape `(batch_size, hidden_size)`.
                     an input token ID tensor of shape `(batch_size, sequence_length, hidden_size)` and
                     an attention mask tensor of shape `(batch_size, sequence_length)`
-            training: Specifies whether the model is being used in ae_training mode
+            training: Specifies whether the model is being used in training mode
 
         Returns:
             Logits for next token prediction
@@ -188,7 +188,7 @@ class SentAeGRUDecoder(KModel):
             inputs: An input embedding tensor of shape `(batch_size, hidden_size)`.
                     an input token ID tensor of shape `(batch_size, sequence_length, hidden_size)` and
                     an attention mask tensor of shape `(batch_size, sequence_length)`
-            training: Specifies whether the model is being used in ae_training mode
+            training: Specifies whether the model is being used in training mode
 
         Returns:
             Logits for next token prediction
