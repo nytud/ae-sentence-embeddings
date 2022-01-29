@@ -6,6 +6,8 @@ import tensorflow as tf
 from tensorflow.keras import layers as tfl
 from tensorflow.keras.backend import random_bernoulli
 
+TensorQuad = Tuple[Tuple[tf.Tensor, tf.Tensor], Tuple[tf.Tensor, tf.Tensor]]
+
 
 class RandomSwapLayer(tfl.Layer):
     """This layer randomly swaps two inputs or leaves their order unaltered"""
@@ -22,17 +24,24 @@ class RandomSwapLayer(tfl.Layer):
             raise ValueError("`p` should be a floating point number in the interval `[0, 1]`")
         self.p = p
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor]) -> Tuple[tf.Tensor, tf.Tensor]:
+    def call(self, inputs: TensorQuad) -> TensorQuad:
         """Call the layer
 
         Args:
-            inputs: A tuple of two tensors `t1` and `t2`
+            inputs: A nested structure of 4 tensors: two tuples, each of which consists of two tensors.
+                    The order of the tensors in the first pair is interchanged in the output if and only
+                    if the tensors of the second pair are swapped as well
 
         Returns:
-            A tuple of two tensors, either `(t1, t2)` or `(t2, t1)`
+            The same tensors as the ones in the input but their order may be interchanged in the nested pairs
         """
-        t1, t2 = inputs
-        outputs = (t2, t1) if random_bernoulli(shape=(), p=self.p) > 0 else inputs
+        pair1, pair2 = inputs
+        if random_bernoulli(shape=(), p=self.p) > 0:
+            pair1 = pair1[::-1]
+            pair2 = pair2[::-1]
+            outputs = (pair1, pair2)
+        else:
+            outputs = inputs
         return outputs
 
     def get_config(self) -> Dict[str, Any]:
