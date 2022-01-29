@@ -13,6 +13,7 @@ class BilingLayerTest(tf.test.TestCase):
 
     def setUp(self) -> None:
         """Fixture setup. This creates two tensor pairs (tuples)"""
+        super().setUp()
         self.pair1 = (
             tf.reshape(tf.range(12), (2, 2, -1)),
             tf.reshape(tf.range(-11, 1), (2, 2, -1))
@@ -43,20 +44,20 @@ class BilingLayerTest(tf.test.TestCase):
         swapper = RandomSwapLayer()
         results = []
         for _ in range(1000):
-            pair1, _ = swapper((self.pair1, self.pair2))
-            result = self.is_swapped(pair1, self.pair1)
+            (pair11, pair12), _ = swapper((self.pair1, self.pair2), training=True)
+            result = self.is_swapped((pair11, pair12), self.pair1)
             results.append(tf.cast(result, tf.int16))
         swapped_times = tf.reduce_sum(results)
         print(f"Swapped tensors this many times:\n{swapped_times}")
         self.assertAllInRange(swapped_times, 450, 550)
 
         swapper.p = 1.0
-        pair1, pair2 = swapper((self.pair1, self.pair2))
+        pair1, pair2 = swapper((self.pair1, self.pair2), training=True)
         self.assertAllEqual(pair1[::-1], self.pair1, msg=f"Tensors not swapped!\n{pair1}")
         self.assertAllEqual(pair2[::-1], self.pair2, msg=f"Tensors not swapped!\n{pair2}")
 
         swapper.p = 0.0
-        pair1, pair2 = swapper((self.pair1, self.pair2))
+        pair1, pair2 = swapper((self.pair1, self.pair2), training=True)
         self.assertAllEqual(pair1, self.pair1, msg=f"Tensors swapped!\n{pair1}")
         self.assertAllEqual(pair2, self.pair2, msg=f"Tensors swapped!\n{pair2}")
 

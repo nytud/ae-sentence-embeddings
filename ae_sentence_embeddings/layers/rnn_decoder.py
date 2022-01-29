@@ -1,6 +1,6 @@
 """A module for RNN decoder layers as an alternative of a GPT decoder"""
 
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
 
 import tensorflow as tf
 from tensorflow.keras import layers as tfl
@@ -51,13 +51,15 @@ class AeGruDecoder(tfl.Layer):
         self.dropout = tfl.Dropout(self.dropout_rate)
         self.layernorm = tfl.LayerNormalization(epsilon=self.layernorm_eps)
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], *args, **kwargs) -> tf.Tensor:
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+             training: Optional[bool] = None) -> tf.Tensor:
         """Call the model
 
         Args:
             inputs: A tuple of three tensors: the initial hidden state tensor of size `batch_size, hidden_size`,
                     an embedded input tensor of shape `batch_size, sequence_length, hidden_size` and
                     an attention mask tensor of shape `batch_size, sequence_length, hidden_size`
+            training: Specify whether the layer is being used in training mode
 
         Returns:
             A tensor of shape `batch_size, sequence_length, hidden_size`
@@ -69,14 +71,13 @@ class AeGruDecoder(tfl.Layer):
             embeddings, hidden_state = rnn_layer(
                 inputs=embeddings,
                 initial_state=hidden_state,
-                mask=attention_mask
+                mask=attention_mask,
+                training=training
             )
-        embeddings = self.dropout(embeddings)
+        embeddings = self.dropout(embeddings, training=training)
         embeddings = self.layernorm(embeddings)
         embeddings = self.intermediate_dense(embeddings)
-        embeddings = self.dropout(embeddings)
         embeddings = self.out_dense(embeddings)
-        embeddings = self.dropout(embeddings)
         return self.layernorm(embeddings)
 
     def get_config(self) -> Dict[str, Any]:

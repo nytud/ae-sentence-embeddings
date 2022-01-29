@@ -94,13 +94,12 @@ class TransformerAe(BaseAe):
         self.encoder = SentAeEncoder(self.enc_config)
         self.decoder = SentAeDecoder(self.dec_config)
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
         """Call the full model
 
         Args:
             inputs: A tensor of input token IDs and a tensor of attention mask
             training: Specifies whether the model is being used in ae_training mode
-            mask: Additional mask tensor. This will not be used
 
         Returns:
             The logits of a probability distribution for next token prediction
@@ -128,13 +127,12 @@ class TransformerVae(BaseAe):
         self.sampler = VaeSampling()
         self.decoder = SentAeDecoder(self.dec_config)
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
         """Call the full model
 
         Args:
             inputs: A tensor of input token IDs and a tensor of attention mask
             training: Specifies whether the model is being used in ae_training mode
-            mask: Additional mask tensor. This will not be used
 
         Returns:
             The logits of a probability distribution for next token prediction
@@ -156,13 +154,12 @@ class BertRnnVae(BaseAe):
         self.sampler = VaeSampling()
         self.decoder = SentAeGRUDecoder(self.dec_config)
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
         """Call the full model
 
         Args:
             inputs: A tensor of input token IDs and a tensor of attention mask
             training: Specifies whether the model is being used in ae_training mode
-            mask: Additional mask tensor. This will not be used
 
         Returns:
             The logits of a probability distribution for next token prediction
@@ -184,6 +181,29 @@ class BertBiRnnVae(BaseAe):
         self.sampler = VaeSampling()
         self.splitter = tfl.Lambda(lambda x: tf.split(x, 2))
         self.swapper = RandomSwapLayer()
-        self.cat = tfl.Lambda(lambda x1, x2: tf.concat([x1, x2], axis=0))
+        self.cat = tfl.Lambda(lambda x: tf.concat(x, axis=0))
         self.decoder1 = SentAeGRUDecoder(self.dec_config)
         self.decoder2 = SentAeGRUDecoder(self.dec_config)
+
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
+        """Call the full model
+
+        Args:
+            inputs: A tensor of input token IDs and a tensor of attention mask
+            training: Specifies whether the model is being used in ae_training mode
+
+        Returns:
+            The logits of a probability distribution for next token prediction
+        """
+        input_ids, attn_mask = inputs
+        mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
+        self.add_loss(_latent_loss(mean, log_var, attn_mask=attn_mask))
+        sents = self.splitter(self.sampler((mean, log_var)))
+        input_ids = self.splitter(input_ids)
+        attn_mask = self.splitter(attn_mask)
+        (sents1, sents2), (input_ids1, input_ids2), (attn_mask1, attn_mask2) = self.swapper((
+            sents, input_ids, attn_mask), training=training)
+        logits1 = self.decoder1((sents1, input_ids1, attn_mask1), training=training)
+        logits2 = self.decoder2((sents2, input_ids2, attn_mask2), training=training)
+        logits = self.cat((logits1, logits2))
+        return logits

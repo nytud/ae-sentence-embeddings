@@ -2,7 +2,7 @@
 Defining them as a model allows to use them separately after pre-training
 """
 
-from typing import Tuple, Sequence
+from typing import Tuple, Sequence, Optional, Literal
 
 import tensorflow as tf
 from tensorflow.keras import Model as KModel
@@ -15,6 +15,7 @@ from ae_sentence_embeddings.layers import (
     AeTransformerDecoder,
     PostPoolingLayer,
     AveragePoolingLayer,
+    CLSPlusSEPPooling,
     AeGruDecoder
 )
 from ae_sentence_embeddings.modeling_tools import process_attention_mask, make_decoder_inputs
@@ -24,32 +25,40 @@ from ae_sentence_embeddings.argument_handling import RnnArgs
 class SentAeEncoder(KModel):
     """The full encoder part of an AE"""
 
-    def __init__(self, config: BertConfig, **kwargs) -> None:
+    def __init__(self, config: BertConfig,
+                 pooling_type: Literal["average", "cls_sep"] = "cls_sep",
+                 **kwargs) -> None:
         """Layer initializer
 
         Args:
             config: A BERT configuration object
+            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
             **kwargs: Keyword arguments for the parent class
         """
         super().__init__(**kwargs)
         self.config = config
+        self.pooling_type = pooling_type.lower()
+        if self.pooling_type == "average":
+            self.pooling = AveragePoolingLayer()
+        elif self.pooling_type == "cls_sep":
+            self.pooling = CLSPlusSEPPooling()
+        else:
+            raise NotImplementedError(f"Unknown pooling type: {pooling_type}")
         self.embedding_layer = TFSharedEmbeddings(
             vocab_size=self.config.vocab_size,
             hidden_size=self.config.hidden_size,
             initializer_range=self.config.initializer_range
         )
         self.transformer_encoder = AeTransformerEncoder(self.config)
-        self.pooling = AveragePoolingLayer()
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
-             training=None, mask=None) -> Tuple[tf.Tensor, Sequence[tf.Tensor]]:
+             training: Optional[bool] = None) -> Tuple[tf.Tensor, Sequence[tf.Tensor]]:
         """Call the encoder
 
         Args:
             inputs: Input ID tensor with shape `(batch_size, sequence_length)`
                     and attention mask with shape `(batch_size, sequence_length)`
             training: Specifies whether the model is being used in ae_training mode
-            mask: Additional mask tensor. This will not be used
 
         Returns:
             A pooled tensor and the Transformer encoder outputs
@@ -89,14 +98,13 @@ class SentVaeEncoder(SentAeEncoder):
         self.post_pooling = PostPoolingLayer(config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
-             training=None, mask=None) -> Tuple[tf.Tensor, tf.Tensor, Sequence[tf.Tensor]]:
+             training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Sequence[tf.Tensor]]:
         """Call the encoder
 
         Args:
             inputs: Input IDs tensor with shape `(batch_size, sequence_length)`
                     and attention mask with shape `(batch_size, sequence_length)`
             training: Specifies whether the model is being used in ae_training mode
-            mask: Additional mask tensor. This will not be used
 
         Returns:
             Two pooled tensors (mean and log variance for VAE sampling) and the Transformer encoder outputs
@@ -125,7 +133,8 @@ class SentAeDecoder(KModel):
             initializer_range=self.config.initializer_range
         )
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+             training: Optional[bool] = None) -> tf.Tensor:
         """Call the decoder
 
         Args:
@@ -133,7 +142,6 @@ class SentAeDecoder(KModel):
                     an input token ID tensor of shape `(batch_size, sequence_length, hidden_size)` and
                     an attention mask tensor of shape `(batch_size, sequence_length)`
             training: Specifies whether the model is being used in ae_training mode
-            mask: Additional mask tensor. This will not be used
 
         Returns:
             Logits for next token prediction
@@ -172,7 +180,8 @@ class SentAeGRUDecoder(KModel):
             initializer_range=embedding_init_range
         )
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor], training=None, mask=None) -> tf.Tensor:
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+             training: Optional[bool] = None) -> tf.Tensor:
         """Call the decoder
 
         Args:
@@ -180,7 +189,6 @@ class SentAeGRUDecoder(KModel):
                     an input token ID tensor of shape `(batch_size, sequence_length, hidden_size)` and
                     an attention mask tensor of shape `(batch_size, sequence_length)`
             training: Specifies whether the model is being used in ae_training mode
-            mask: Additional mask tensor. This will not be used
 
         Returns:
             Logits for next token prediction

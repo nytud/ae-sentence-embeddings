@@ -1,12 +1,12 @@
 """Define layers that support bilingual training"""
 
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
 
 import tensorflow as tf
 from tensorflow.keras import layers as tfl
 from tensorflow.keras.backend import random_bernoulli
 
-TensorQuad = Tuple[Tuple[tf.Tensor, tf.Tensor], Tuple[tf.Tensor, tf.Tensor]]
+TensorPairs = Tuple[Tuple[tf.Tensor, tf.Tensor], ...]
 
 
 class RandomSwapLayer(tfl.Layer):
@@ -24,22 +24,24 @@ class RandomSwapLayer(tfl.Layer):
             raise ValueError("`p` should be a floating point number in the interval `[0, 1]`")
         self.p = p
 
-    def call(self, inputs: TensorQuad) -> TensorQuad:
+    def call(self, inputs: TensorPairs, training: Optional[bool] = None) -> TensorPairs:
         """Call the layer
 
         Args:
-            inputs: A nested structure of 4 tensors: two tuples, each of which consists of two tensors.
-                    The order of the tensors in the first pair is interchanged in the output if and only
-                    if the tensors of the second pair are swapped as well
+            inputs: A tuple of tensor pairs, where the pairs are tuples.
+                    The order of the tensors in will either be interchanged in all pairs
+                    or not interchanged in any of the pairs
+            training: Specify whether the layer is being used in training mode. If not,
+                      the inputs will not be swapped
 
         Returns:
-            The same tensors as the ones in the input but their order may be interchanged in the nested pairs
+            The same tensors as the ones in the input but their order may be interchanged in the pairs
         """
-        pair1, pair2 = inputs
-        if random_bernoulli(shape=(), p=self.p) > 0:
-            pair1 = pair1[::-1]
-            pair2 = pair2[::-1]
-            outputs = (pair1, pair2)
+        if training and random_bernoulli(shape=(), p=self.p) > 0:
+            outputs = []
+            for pair in inputs:
+                outputs.append(pair[::-1])
+            outputs = tuple(outputs)
         else:
             outputs = inputs
         return outputs

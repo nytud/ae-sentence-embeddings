@@ -1,9 +1,8 @@
 """A module for Transformer-based VAE layers"""
 
-from typing import Tuple
+from typing import Tuple, Optional
 import tensorflow as tf
 from tensorflow.keras import layers as tfl, backend as K
-from tensorflow.keras.initializers import TruncatedNormal
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.bert.modeling_tf_bert import TFBertEncoder
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
@@ -33,12 +32,12 @@ class AeTransformerDecoder(tfl.Layer):
         super().__init__(**kwargs)
         self.hidden = [TFBlock(config, scale=True, name=f"decoder_hidden_._{i}") for i in range(config.n_layer)]
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: bool = False) -> tf.Tensor:
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
         """Call the layer. Itt will not be able to output attentions or use head masks
 
         Args:
             inputs: Two tensors, the input hidden state and the attention mask
-            training: Specifies whether the model is being used in ae_training mode
+            training: Specifies whether the model is being used in training mode
 
         Returns:
             The output hidden state
@@ -71,18 +70,15 @@ class PostPoolingLayer(tfl.Layer):
         self.config = config
         dense_params = {
             "units": self.config.hidden_size,
-            "activation": self.config.hidden_act,
-            "kernel_initializer": TruncatedNormal(stddev=self.config.initializer_range),
             "input_shape": (None, self.config.hidden_size)
         }
         self.post_pool_mean_dense = tfl.Dense(**dense_params, name="post_pool_mean_dense")
         self.post_pool_logvar_dense = tfl.Dense(**dense_params, name="post_pool_logvar_dense")
-        self.post_pool_dropout = tfl.Dropout(rate=config.hidden_dropout_prob)
         self.post_pool_layernorm = tfl.LayerNormalization(epsilon=config.layer_norm_eps)
 
     def call(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
         mean_tensor = self.post_pool_mean_dense(inputs)
         logvar_tensor = self.post_pool_logvar_dense(inputs)
-        mean_tensor = self.post_pool_layernorm(self.post_pool_dropout(mean_tensor))
-        logvar_tensor = self.post_pool_layernorm(self.post_pool_dropout(logvar_tensor))
+        mean_tensor = self.post_pool_layernorm(mean_tensor)
+        logvar_tensor = self.post_pool_layernorm(logvar_tensor)
         return mean_tensor, logvar_tensor
