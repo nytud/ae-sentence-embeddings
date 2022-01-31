@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Mapping, Dict, Any, Union, Optional, Sequence
+from typing import Mapping, Dict, Any, Union, Optional, Sequence, Callable
 from inspect import signature
 
 from transformers import BertConfig, OpenAIGPTConfig
@@ -103,14 +103,40 @@ class LearningRateArgs(DeeplArgs):
 
 
 @dataclass
+class OneCycleArgs(DeeplArgs):
+    """A dataclass for the arguments of a one-cycle learning rate scheduler. It can also contain the learning rate
+    only if a one-cycle scheduler is not required
+
+    Fields:
+        initial_rate: An initial rate (learning rate or beta_1 momentum factor)
+        total_steps: Total number of iterations necessary to reach the last iteration beginning from the first
+                     iteration, i.e. `total_number_of_iterations - 1`
+        half_cycle: Number of iterations after which the rate reaches its extremum at mid-cycle beginning from
+                    the first iteration
+        cycle_extremum: Extremum reached at mid-cycle
+        end_extremum: Optional. Extremum reached at the training end
+    """
+    initial_rate: float
+    total_steps: int
+    half_cycle: int
+    cycle_extremum: float
+    end_extremum: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        """Check argument compatibility"""
+        if 2 * self.half_cycle > self.total_steps:
+            raise ValueError("`total_steps` must be larger than the number of steps in a single cycle")
+
+
+@dataclass
 class AdamWArgs(DeeplArgs):
     """A dataclass for AdamW optimizer arguments
     For details on the fields, see `https://www.tensorflow.org/addons/api_docs/python/tfa/optimizers/AdamW`
     """
-    weight_decay: float = 5e-5
-    learning_rate: float = 1e-5
-    beta_1: float = 0.9
-    beta_2: float = 0.999
+    weight_decay: Union[float, Callable] = 5e-5
+    learning_rate: Union[float, Callable] = 1e-5
+    beta_1: Union[float, Callable] = 0.9
+    beta_2: Union[float, Callable] = 0.999
 
 
 @dataclass
