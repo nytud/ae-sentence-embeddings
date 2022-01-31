@@ -6,6 +6,8 @@ from typing import Tuple, Sequence, Optional, Literal
 
 import tensorflow as tf
 from tensorflow.keras import Model as KModel
+from tensorflow.keras import layers as tfl
+from tensorflow.keras.initializers import TruncatedNormal
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 from transformers.modeling_tf_utils import TFSharedEmbeddings
@@ -16,7 +18,8 @@ from ae_sentence_embeddings.layers import (
     PostPoolingLayer,
     AveragePoolingLayer,
     CLSPlusSEPPooling,
-    AeGruDecoder
+    AeGruDecoder,
+    AeGRUCellDecoder
 )
 from ae_sentence_embeddings.modeling_tools import process_attention_mask, make_decoder_inputs
 from ae_sentence_embeddings.argument_handling import RnnArgs
@@ -66,10 +69,10 @@ class SentAeEncoder(KModel):
         """
         input_ids, attention_mask = inputs
         embeddings = self.embedding_layer(input_ids, mode="embedding")
-        attention_mask = process_attention_mask(attention_mask, embedding_dtype=embeddings.dtype)
+        mod_attention_mask = process_attention_mask(attention_mask, embedding_dtype=embeddings.dtype)
         encoder_outputs = self.transformer_encoder(
             hidden_states=embeddings,
-            attention_mask=attention_mask,
+            attention_mask=mod_attention_mask,
             head_mask=[None] * self.config.num_hidden_layers,
             past_key_values=[None] * self.config.num_hidden_layers,
             encoder_hidden_states=None,
@@ -200,3 +203,39 @@ class SentAeGRUDecoder(KModel):
                                      training=training)
         logits = self.embedding_layer(hidden_output, mode="linear")
         return logits
+
+
+def ae_double_gru(rnn_config: RnnArgs) -> KModel:
+    """Define parallel decoders with the functional API
+
+    Args:
+        rnn_config: The RNN configuration dataclass shared by the two decoders
+
+    Returns:
+        A functional Keras model
+    """
+    hidden_states1 = tfl.Input(shape=(rnn_config.hidden_size,), dtype=tf.float32)
+    inputs1 = tfl.Input(shape=(None,), dtype=tf.float32)
+    hidden_states2 = tfl.Input(shape=(rnn_config.hidden_size,), dtype=tf.float32)
+    inputs2 = tfl.Input(shape=(None,), dtype=tf.float32)
+
+    branch1_out = AeGRUCellDecoder(
+        num_rnn_layers=rnn_config.num_rnn_layers,
+        hidden_size=rnn_config.hidden_size,
+        layernorm_eps=rnn_config.layernorm_eps,
+        dropout_rate=rnn_config.dropout_rate
+    )((hidden_states1, inputs1))
+    branch2_out = AeGRUCellDecoder(
+        num_rnn_layers=rnn_config.num_rnn_layers,
+        hidden_size=rnn_config.hidden_size,
+        layernorm_eps=rnn_config.layernorm_eps,
+        dropout_rate=rnn_config.dropout_rate
+    )((hidden_states2, inputs2))
+
+    outputs = tfl.concatenate([branch1_out, branch2_out], axis=0)
+    outputs = tfl.Dense(
+        rnn_config.vocab_size,
+        kernel_initializer=TruncatedNormal(stddev=rnn_config.initializer_dev),
+    )(outputs)
+    return KModel(inputs=[hidden_states1, inputs1, hidden_states2, inputs2],
+                  outputs=outputs, name="double_gru")

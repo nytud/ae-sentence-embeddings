@@ -5,5 +5,5 @@ from .transformer_ae_layers import (
     PostPoolingLayer
 )
 from .pooling import AveragePoolingLayer, CLSPlusSEPPooling
-from .rnn_decoder import AeGruDecoder
+from .rnn_decoder import AeGruDecoder, AeGRUCellDecoder
 from .bilingual import RandomSwapLayer

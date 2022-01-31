@@ -5,6 +5,7 @@ from transformers import BertConfig, OpenAIGPTConfig
 import numpy as np
 
 from ae_sentence_embeddings.models import TransformerVae
+from ae_sentence_embeddings.models.ae_models import latent_loss_func
 
 
 class TransformerVaeTest(tf.test.TestCase):
@@ -38,7 +39,7 @@ class TransformerVaeTest(tf.test.TestCase):
         """Test latent loss calculation"""
         mean_vecs = tf.keras.backend.random_normal((2, 64))
         logvar_vecs = tf.keras.backend.random_normal((2, 64))
-        latent_loss = self.model._latent_loss(mean_vecs, logvar_vecs, self.attn_mask)
+        latent_loss = latent_loss_func(mean_vecs, logvar_vecs)
         print(f"Latent loss is: {latent_loss}")
         zero_dim_arr = np.array(0)
         self.assertShapeEqual(zero_dim_arr, latent_loss)

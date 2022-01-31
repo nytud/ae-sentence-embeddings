@@ -3,6 +3,7 @@
 from typing import Tuple, Optional
 import tensorflow as tf
 from tensorflow.keras import layers as tfl, backend as K
+from tensorflow.keras.initializers import TruncatedNormal
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.bert.modeling_tf_bert import TFBertEncoder
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
@@ -70,7 +71,8 @@ class PostPoolingLayer(tfl.Layer):
         self.config = config
         dense_params = {
             "units": self.config.hidden_size,
-            "input_shape": (None, self.config.hidden_size)
+            "input_shape": (None, self.config.hidden_size),
+            "kernel_initializer": TruncatedNormal(stddev=self.config.initializer_range)
         }
         self.post_pool_mean_dense = tfl.Dense(**dense_params, name="post_pool_mean_dense")
         self.post_pool_logvar_dense = tfl.Dense(**dense_params, name="post_pool_logvar_dense")

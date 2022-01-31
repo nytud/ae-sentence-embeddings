@@ -11,23 +11,25 @@ from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 
 from ae_sentence_embeddings.argument_handling import RnnArgs
 from ae_sentence_embeddings.layers import VaeSampling, RandomSwapLayer
-from ae_sentence_embeddings.models import SentVaeEncoder, SentAeDecoder, SentAeEncoder, SentAeGRUDecoder
+from ae_sentence_embeddings.models import (
+    SentVaeEncoder,
+    SentAeDecoder,
+    SentAeEncoder,
+    SentAeGRUDecoder,
+    ae_double_gru
+)
 
 
 @tf.function
-def _latent_loss(mean: tf.Tensor, log_var: tf.Tensor, attn_mask: tf.Tensor) -> tf.Tensor:
+def latent_loss_func(mean: tf.Tensor, log_var: tf.Tensor) -> tf.Tensor:
     """Calculate VAE latent loss
 
     Args:
         mean: The Gaussian mean vector
         log_var: The Gaussian variance vector
-        attn_mask: Attention mask, which is necessary to calculate a normalizing constant
     """
-    latent_loss = -0.1 * tf.reduce_sum(1 + log_var - tf.exp(log_var) - tf.square(mean), axis=-1)
-    norm_nominator = tf.cast(tf.reduce_sum(attn_mask, axis=-1), mean.dtype)
-    norm_denominator = tf.cast(tf.shape(mean)[-1], mean.dtype)
-    norm_const = tf.divide(norm_nominator, norm_denominator)
-    return tf.reduce_mean(tf.multiply(latent_loss, norm_const))
+    latent_loss_value = -0.5 * tf.reduce_sum(1 + (log_var - tf.square(mean) - tf.exp(log_var)), axis=-1)
+    return tf.reduce_mean(latent_loss_value)
 
 
 class BaseAe(KModel):
@@ -139,7 +141,7 @@ class TransformerVae(BaseAe):
         """
         input_ids, attn_mask = inputs
         mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
-        self.add_loss(_latent_loss(mean, log_var, attn_mask=attn_mask))
+        self.add_loss(latent_loss_func(mean, log_var))
         sent_embedding = self.sampler((mean, log_var))
         logits = self.decoder(inputs=(sent_embedding, input_ids, attn_mask), training=training)
         return logits
@@ -166,7 +168,7 @@ class BertRnnVae(BaseAe):
         """
         input_ids, attn_mask = inputs
         mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
-        self.add_loss(_latent_loss(mean, log_var, attn_mask=attn_mask))
+        self.add_loss(latent_loss_func(mean, log_var))
         sent_embedding = self.sampler((mean, log_var))
         logits = self.decoder((sent_embedding, input_ids, attn_mask), training=training)
         return logits
@@ -181,9 +183,7 @@ class BertBiRnnVae(BaseAe):
         self.sampler = VaeSampling()
         self.splitter = tfl.Lambda(lambda x: tf.split(x, 2))
         self.swapper = RandomSwapLayer()
-        self.cat = tfl.Lambda(lambda x: tf.concat(x, axis=0))
-        self.decoder1 = SentAeGRUDecoder(self.dec_config)
-        self.decoder2 = SentAeGRUDecoder(self.dec_config)
+        self.decoder = ae_double_gru(rnn_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
         """Call the full model
@@ -197,12 +197,11 @@ class BertBiRnnVae(BaseAe):
         """
         input_ids, attn_mask = inputs
         mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
-        self.add_loss(_latent_loss(mean, log_var, attn_mask=attn_mask))
+        self.add_loss(latent_loss_func(mean, log_var))
         sents1, sents2 = self.splitter(self.sampler((mean, log_var)))
-        input_ids1, input_ids2 = self.splitter(input_ids)
-        attn_mask1, attn_mask2 = self.splitter(attn_mask)
         sents1, sents2 = self.swapper(((sents1, sents2),), training=training)[0]
-        logits1 = self.decoder1((sents1, input_ids1, attn_mask1), training=training)
-        logits2 = self.decoder2((sents2, input_ids2, attn_mask2), training=training)
-        logits = self.cat((logits1, logits2))
+        dec_inputs1 = tf.zeros(shape=(tf.shape(sents1)[0], tf.shape(attn_mask)[1],
+                                      tf.shape(sents1)[-1]))
+        dec_inputs2 = tf.identity(dec_inputs1)
+        logits = self.decoder((sents1, dec_inputs1, sents2, dec_inputs2), training=training)
         return logits

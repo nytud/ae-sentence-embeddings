@@ -176,7 +176,7 @@ class AeGRUCellDecoder(tfl.Layer):
             training: Specify whether the model is being used in training mode
 
         Returns:
-            Activations of shape `(batch_size, hidden_size)`
+            Activations of shape `(batch_size, timesteps, hidden_size)`
         """
         hidden_states, rnn_x = inputs
         for rnn, dense in zip(self.rnn_layers, self.dense_layers):
