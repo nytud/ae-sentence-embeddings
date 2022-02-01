@@ -8,7 +8,6 @@ import tensorflow as tf
 from tensorflow.keras import Model as KModel, layers as tfl
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
-from tensorflow.keras.initializers import TruncatedNormal
 
 from ae_sentence_embeddings.argument_handling import RnnArgs, RegularizedEmbeddingArgs
 from ae_sentence_embeddings.layers import VaeSampling, RandomSwapLayer, RegularizedEmbedding

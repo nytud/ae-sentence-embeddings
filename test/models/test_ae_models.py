@@ -32,7 +32,7 @@ class TransformerVaeTest(tf.test.TestCase):
     def setUp(self) -> None:
         """Fixture setup. Create input token IDs and attention mask"""
         super().setUp()
-        self.input_ids = tf.constant(np.random.randint(30, size=(2, 8)))
+        self.input_ids = tf.constant(np.random.randint(30, size=(2, 8)), dtype=tf.int32)
         self.attn_mask = tf.constant([[1, 1, 1, 1, 1, 0, 0, 0], [1, 1, 1, 1, 1, 1, 1, 1]])
 
     def test_latent_loss(self) -> None:
