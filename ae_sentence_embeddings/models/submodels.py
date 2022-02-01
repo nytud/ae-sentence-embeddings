@@ -18,10 +18,11 @@ from ae_sentence_embeddings.layers import (
     AveragePoolingLayer,
     CLSPlusSEPPooling,
     AeGruDecoder,
+    RegularizedEmbedding,
     SinusoidalEmbedding
 )
 from ae_sentence_embeddings.modeling_tools import process_attention_mask, make_decoder_inputs
-from ae_sentence_embeddings.argument_handling import RnnArgs, PositionalEmbeddingArgs
+from ae_sentence_embeddings.argument_handling import RnnArgs, PositionalEmbeddingArgs, RegularizedEmbeddingArgs
 
 
 class SentAeEncoder(KModel):
@@ -184,32 +185,32 @@ class SentAeGRUDecoder(KModel):
         vocab_size = config_dict.pop("vocab_size")
         embedding_init_range = config_dict.pop("initializer_dev")
         self.decoder = AeGruDecoder(**config_dict)
-        self.embedding_layer = tfl.Embedding(
-            input_dim=vocab_size,
-            output_dim=config.hidden_size,
-            embeddings_initializer=TruncatedNormal(stddev=embedding_init_range)
+        embedding_layer_config = RegularizedEmbeddingArgs(
+            vocab_size=vocab_size,
+            hidden_size=config.hidden_size,
+            initializer_range=embedding_init_range,
+            layer_norm_eps=config.layernorm_eps,
+            hidden_dropout_prob=config.dropout_rate
         )
+        self.embedding_layer = RegularizedEmbedding(embedding_layer_config)
         self.out_dense = tfl.Dense(config.vocab_size,
                                    kernel_initializer=TruncatedNormal(stddev=config.initializer_dev))
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> tf.Tensor:
         """Call the decoder
 
         Args:
-            inputs: An input embedding tensor of shape `(batch_size, hidden_size)`.
-                    an input token ID tensor of shape `(batch_size, sequence_length, hidden_size)` and
-                    an attention mask tensor of shape `(batch_size, sequence_length)`
+            inputs: An input embedding tensor of shape `(batch_size, hidden_size)` and
+                    an input token ID tensor of shape `(batch_size, sequence_length, hidden_size)`
             training: Specifies whether the model is being used in training mode
 
         Returns:
             Logits for next token prediction
         """
-        sent_embeddings, input_ids, attention_mask = inputs
-        attention_mask = make_decoder_inputs(attention_mask)
+        sent_embeddings, input_ids = inputs
         token_embeddings = self.embedding_layer(input_ids)
-        hidden_output = self.decoder((sent_embeddings, token_embeddings, attention_mask),
-                                     training=training)
+        hidden_output = self.decoder((sent_embeddings, token_embeddings), training=training)
         logits = self.out_dense(hidden_output)
         return logits
 
