@@ -10,7 +10,6 @@ from tensorflow.keras import layers as tfl
 from tensorflow.keras.initializers import TruncatedNormal
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
-from transformers.modeling_tf_utils import TFSharedEmbeddings
 
 from ae_sentence_embeddings.layers import (
     AeTransformerEncoder,
@@ -19,10 +18,10 @@ from ae_sentence_embeddings.layers import (
     AveragePoolingLayer,
     CLSPlusSEPPooling,
     AeGruDecoder,
-    AeGRUCellDecoder
+    SinusoidalEmbedding
 )
 from ae_sentence_embeddings.modeling_tools import process_attention_mask, make_decoder_inputs
-from ae_sentence_embeddings.argument_handling import RnnArgs
+from ae_sentence_embeddings.argument_handling import RnnArgs, PositionalEmbeddingArgs
 
 
 class SentAeEncoder(KModel):
@@ -47,11 +46,8 @@ class SentAeEncoder(KModel):
             self.pooling = CLSPlusSEPPooling()
         else:
             raise NotImplementedError(f"Unknown pooling type: {pooling_type}")
-        self.embedding_layer = TFSharedEmbeddings(
-            vocab_size=self.config.vocab_size,
-            hidden_size=self.config.hidden_size,
-            initializer_range=self.config.initializer_range
-        )
+        self.embedding_layer = SinusoidalEmbedding(
+            PositionalEmbeddingArgs.collect_from_dict(config.to_dict()))
         self.transformer_encoder = AeTransformerEncoder(self.config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
@@ -68,7 +64,7 @@ class SentAeEncoder(KModel):
 
         """
         input_ids, attention_mask = inputs
-        embeddings = self.embedding_layer(input_ids, mode="embedding")
+        embeddings = self.embedding_layer(input_ids, training=training)
         mod_attention_mask = process_attention_mask(attention_mask, embedding_dtype=embeddings.dtype)
         encoder_outputs = self.transformer_encoder(
             hidden_states=embeddings,
@@ -90,14 +86,19 @@ class SentAeEncoder(KModel):
 class SentVaeEncoder(SentAeEncoder):
     """The full encoder part of a VAE"""
 
-    def __init__(self, config: BertConfig, **kwargs) -> None:
+    def __init__(
+            self,
+            config: BertConfig,
+            pooling_type: Literal["average", "cls_sep"] = "cls_sep",
+            **kwargs
+    ) -> None:
         """Layer initializer
 
         Args:
             config: A BERT configuration object
             **kwargs: Keyword arguments for the parent class
         """
-        super().__init__(config, **kwargs)
+        super().__init__(config, pooling_type, **kwargs)
         self.post_pooling = PostPoolingLayer(config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
@@ -130,11 +131,17 @@ class SentAeDecoder(KModel):
         super().__init__(**kwargs)
         self.config = config
         self.transformer_decoder = AeTransformerDecoder(self.config)
-        self.embedding_layer = TFSharedEmbeddings(
-            vocab_size=self.config.vocab_size,
-            hidden_size=self.config.n_embd,
-            initializer_range=self.config.initializer_range
+        embedding_args = PositionalEmbeddingArgs(
+            vocab_size=config.vocab_size,
+            max_position_embeddings=config.n_positions,
+            hidden_size=config.n_embd,
+            hidden_dropout_prob=config.embd_pdrop,
+            layer_norm_eps=config.layer_norm_epsilon,
+            initializer_range=config.initializer_range
         )
+        self.embedding_layer = SinusoidalEmbedding(embedding_args)
+        self.out_dense = tfl.Dense(config.vocab_size,
+                                   kernel_initializer=TruncatedNormal(stddev=config.initializer_range))
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> tf.Tensor:
@@ -150,14 +157,14 @@ class SentAeDecoder(KModel):
             Logits for next token prediction
         """
         sent_embeddings, input_ids, attention_mask = inputs
-        token_embeddings = self.embedding_layer(input_ids[:, 1:], mode="embedding")
+        token_embeddings = self.embedding_layer(input_ids[:, 1:], training=training)
         attention_mask = process_attention_mask(
             attention_mask=make_decoder_inputs(attention_mask),
             embedding_dtype=token_embeddings.dtype
         )
         encodings = tf.concat([tf.expand_dims(sent_embeddings, axis=1), token_embeddings], axis=1)
         hidden_output = self.transformer_decoder((encodings, attention_mask), training=training)
-        logits = self.embedding_layer(hidden_output, mode="linear")
+        logits = self.out_dense(hidden_output)
         return logits
 
 
@@ -177,11 +184,13 @@ class SentAeGRUDecoder(KModel):
         vocab_size = config_dict.pop("vocab_size")
         embedding_init_range = config_dict.pop("initializer_dev")
         self.decoder = AeGruDecoder(**config_dict)
-        self.embedding_layer = TFSharedEmbeddings(
-            vocab_size=vocab_size,
-            hidden_size=self.config.hidden_size,
-            initializer_range=embedding_init_range
+        self.embedding_layer = tfl.Embedding(
+            input_dim=vocab_size,
+            output_dim=config.hidden_size,
+            embeddings_initializer=TruncatedNormal(stddev=embedding_init_range)
         )
+        self.out_dense = tfl.Dense(config.vocab_size,
+                                   kernel_initializer=TruncatedNormal(stddev=config.initializer_dev))
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> tf.Tensor:
@@ -198,10 +207,10 @@ class SentAeGRUDecoder(KModel):
         """
         sent_embeddings, input_ids, attention_mask = inputs
         attention_mask = make_decoder_inputs(attention_mask)
-        token_embeddings = self.embedding_layer(input_ids, mode="embedding")
+        token_embeddings = self.embedding_layer(input_ids)
         hidden_output = self.decoder((sent_embeddings, token_embeddings, attention_mask),
                                      training=training)
-        logits = self.embedding_layer(hidden_output, mode="linear")
+        logits = self.out_dense(hidden_output)
         return logits
 
 
@@ -215,17 +224,17 @@ def ae_double_gru(rnn_config: RnnArgs) -> KModel:
         A functional Keras model
     """
     hidden_states1 = tfl.Input(shape=(rnn_config.hidden_size,), dtype=tf.float32)
-    inputs1 = tfl.Input(shape=(None,), dtype=tf.float32)
+    inputs1 = tfl.Input(shape=(None, rnn_config.hidden_size), dtype=tf.float32)
     hidden_states2 = tfl.Input(shape=(rnn_config.hidden_size,), dtype=tf.float32)
-    inputs2 = tfl.Input(shape=(None,), dtype=tf.float32)
+    inputs2 = tfl.Input(shape=(None, rnn_config.hidden_size), dtype=tf.float32)
 
-    branch1_out = AeGRUCellDecoder(
+    branch1_out = AeGruDecoder(
         num_rnn_layers=rnn_config.num_rnn_layers,
         hidden_size=rnn_config.hidden_size,
         layernorm_eps=rnn_config.layernorm_eps,
         dropout_rate=rnn_config.dropout_rate
     )((hidden_states1, inputs1))
-    branch2_out = AeGRUCellDecoder(
+    branch2_out = AeGruDecoder(
         num_rnn_layers=rnn_config.num_rnn_layers,
         hidden_size=rnn_config.hidden_size,
         layernorm_eps=rnn_config.layernorm_eps,

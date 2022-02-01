@@ -36,48 +36,30 @@ class AeGruDecoder(tfl.Layer):
             return_sequences=True,
             return_state=True
         ) for _ in range(self._num_rnn_layers)]
-        self.intermediate_dense = tfl.Dense(
-            units=self._hidden_size*2,
-            activation='tanh',
-            kernel_initializer='glorot_uniform',
-            input_shape=(None, None, self._hidden_size)
-        )
-        self.out_dense = tfl.Dense(
-            units=self._hidden_size,
-            activation='tanh',
-            kernel_initializer='glorot_uniform',
-            input_shape=(None, None, self._hidden_size*2)
-        )
         self.dropout = tfl.Dropout(self.dropout_rate)
         self.layernorm = tfl.LayerNormalization(epsilon=self.layernorm_eps)
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> tf.Tensor:
         """Call the model
 
         Args:
-            inputs: A tuple of three tensors: the initial hidden state tensor of size `batch_size, hidden_size`,
-                    an embedded input tensor of shape `batch_size, sequence_length, hidden_size` and
-                    an attention mask tensor of shape `batch_size, sequence_length, hidden_size`
+            inputs: A tuple of two tensors: the initial hidden state tensor of size `(batch_size, hidden_size)` and
+                    an embedded input tensor of shape `(batch_size, sequence_length, hidden_size)`
             training: Specify whether the layer is being used in training mode
 
         Returns:
             A tensor of shape `batch_size, sequence_length, hidden_size`
 
         """
-        hidden_state, embeddings, attention_mask = inputs
-        attention_mask = tf.cast(attention_mask, 'bool')
+        hidden_state, embeddings = inputs
         for rnn_layer in self.rnn:
             embeddings, hidden_state = rnn_layer(
                 inputs=embeddings,
                 initial_state=hidden_state,
-                mask=attention_mask,
                 training=training
             )
         embeddings = self.dropout(embeddings, training=training)
-        embeddings = self.layernorm(embeddings)
-        embeddings = self.intermediate_dense(embeddings)
-        embeddings = self.out_dense(embeddings)
         return self.layernorm(embeddings)
 
     def get_config(self) -> Dict[str, Any]:

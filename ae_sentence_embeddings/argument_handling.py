@@ -208,6 +208,42 @@ class RnnArgs(DeeplArgs):
 
 
 @dataclass
+class RegularizedEmbeddingArgs(DeeplArgs):
+    """Arguments for creating embedding layers regularized with layer normalization and dropout
+
+    Fields:
+        vocab_size: Number of elements in the vocabulary
+        hidden_size: Embedding size. Defaults to 768
+        initializer_range: Stddev for weight kernel initialization. Defaults to 0.02
+        layer_norm_eps: Epsilon parameter for layer normalization. Defaults to 1e-12
+        hidden_dropout_prob: Dropout probability. Defaults to 0.1
+    """
+    vocab_size: int
+    hidden_size: int = 768
+    initializer_range: float = 0.02
+    layer_norm_eps: float = 1e-12
+    hidden_dropout_prob: float = 0.1
+
+
+@dataclass
+class PositionalEmbeddingArgs(RegularizedEmbeddingArgs):
+    """Arguments for a positional embedding layer.
+    This inherits from `RegularizedEmbeddingArgs`
+
+    Fields:
+        vocab_size: Number of elements in the vocabulary
+        max_position_embeddings: The maximal sequence length that the model can handle. Defaults to 512
+        hidden_size: Embedding size. Defaults to 768
+        min_freq: Minimal frequency for the sinusoidal positional encoding. Defaults to 1e-4
+        initializer_range: Stddev for weight kernel initialization. Defaults to 0.02
+        layer_norm_eps: Epsilon parameter for layer normalization. Defaults to 1e-12
+        hidden_dropout_prob: Dropout probability. Defaults to 0.1
+    """
+    max_position_embeddings: int = 512
+    min_freq: float = 1e-4
+
+
+@dataclass
 class DataSplitPathArgs(DeeplArgs):
     """A dataclass for train, dev and test dataset paths
 

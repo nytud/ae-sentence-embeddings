@@ -1,6 +1,6 @@
 """A module for Transformer-based VAE layers"""
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Any, Union
 import tensorflow as tf
 from tensorflow.keras import layers as tfl, backend as K
 from tensorflow.keras.initializers import TruncatedNormal
@@ -9,6 +9,8 @@ from transformers.models.bert.modeling_tf_bert import TFBertEncoder
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 from transformers.models.openai.modeling_tf_openai import TFBlock
 from transformers.modeling_tf_utils import keras_serializable
+
+from ae_sentence_embeddings.argument_handling import PositionalEmbeddingArgs, RegularizedEmbeddingArgs
 
 
 @keras_serializable
@@ -84,3 +86,146 @@ class PostPoolingLayer(tfl.Layer):
         mean_tensor = self.post_pool_layernorm(mean_tensor)
         logvar_tensor = self.post_pool_layernorm(logvar_tensor)
         return mean_tensor, logvar_tensor
+
+
+class RegularizedEmbedding(tfl.Layer):
+    """An embedding layer regularized with layer normalization and dropout"""
+
+    def __init__(self, embedding_args: Union[RegularizedEmbeddingArgs, PositionalEmbeddingArgs],
+                 **kwargs) -> None:
+        """Initialize the layer
+
+        Args:
+            embedding_args: embedding and regularization arguments
+            **kwargs: Keyword arguments for the superclass initializer
+        """
+        super().__init__(**kwargs)
+        self._vocab_size = embedding_args.vocab_size
+        self._hidden_size = embedding_args.hidden_size
+        self._layer_norm_eps = embedding_args.layer_norm_eps
+        self._initializer_range = embedding_args.initializer_range
+        self._hidden_dropout_prob = embedding_args.hidden_dropout_prob
+        self.layernorm = tfl.LayerNormalization(epsilon=self._layer_norm_eps)
+        self.dropout = tfl.Dropout(self._hidden_dropout_prob)
+        self.static_embedding_layer = tfl.Embedding(
+            input_dim=self._vocab_size,
+            output_dim=self._hidden_size,
+            embeddings_initializer=TruncatedNormal(stddev=self._initializer_range)
+        )
+
+    def call(self, inputs: tf.Tensor, training: Optional[bool] = None) -> tf.Tensor:
+        """Call the layer
+
+        Args:
+            inputs: An input ID tensor of shape `(batch_size, sequence_length)`
+            training: Specify whether the model is being used in training mode
+
+        Returns:
+            An embedding tensor of shape `(batch_size, sequence_length, hidden_size)`
+        """
+        embeddings = self.static_embedding_layer(inputs)
+        return self.dropout(self.layernorm(embeddings), training=training)
+
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super().get_config()
+        return {
+            **base_config,
+            "vocab_size": self.vocab_size,
+            "hidden_size": self.hidden_size,
+            "layer_norm_eps": self.layer_norm_eps,
+            "initializer_range": self.initializer_range,
+            "hidden_dropout_prob": self.hidden_dropout_prob
+        }
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]):
+        embedding_args = PositionalEmbeddingArgs.collect_from_dict(config)
+        additional_args = {k: v for k, v in config.items() if k not in embedding_args.to_dict().keys()}
+        return cls(embedding_args, **additional_args)
+
+    @property
+    def vocab_size(self) -> int:
+        return self._vocab_size
+
+    @property
+    def hidden_size(self) -> int:
+        return self._hidden_size
+
+    @property
+    def hidden_dropout_prob(self) -> float:
+        return self._hidden_dropout_prob
+
+    @property
+    def initializer_range(self) -> float:
+        return self._initializer_range
+
+    @property
+    def layer_norm_eps(self) -> float:
+        return self._layer_norm_eps
+
+
+class SinusoidalEmbedding(RegularizedEmbedding):
+    """An implementation of the sinusoidal positional embeddings used in the original Transformer"""
+
+    def __init__(self, embedding_args: PositionalEmbeddingArgs, **kwargs) -> None:
+        """Initialize the layer
+
+        Args:
+            embedding_args: positional embedding arguments
+            **kwargs: Keyword arguments for the superclass initializer
+        """
+        regularized_embedding_args = RegularizedEmbeddingArgs.collect_from_dict(
+            embedding_args.to_dict())
+        super().__init__(regularized_embedding_args, **kwargs)
+        self._max_position_embeddings = embedding_args.max_position_embeddings
+        self._min_freq = embedding_args.min_freq
+        self.positional_matrix = self._get_positional_matrix()
+
+    def _get_positional_matrix(self) -> tf.Tensor:
+        """Get the full positional embedding matrix
+        Original source of code:
+        https://towardsdatascience.com/master-positional-encoding-part-i-63c05d90a0c3
+        """
+        with tf.name_scope("positional_matrix"):
+            position = tf.range(self._max_position_embeddings, dtype=tf.float32)
+            mask = tf.range(self._hidden_size)
+            sin_mask = tf.cast(mask % 2, tf.float32)
+            cos_mask = 1 - sin_mask
+            exponent = 2 * (mask // 2)
+            exponent = tf.cast(exponent, tf.float32) / tf.cast(self._hidden_size, tf.float32)
+            freqs = self._min_freq ** exponent
+            angles = tf.einsum('i,j->ij', position, freqs)
+            pos_enc = tf.math.cos(angles) * cos_mask + tf.math.sin(angles) * sin_mask
+            return pos_enc
+
+    def call(self, inputs: tf.Tensor, training: Optional[bool] = None) -> tf.Tensor:
+        """Call the layer
+
+        Args:
+            inputs: An input ID tensor of shape `(batch_size, sequence_length)`
+            training: Specify whether the model is being used in training mode
+
+        Returns:
+            An embedding tensor of shape `(batch_size, sequence_length, hidden_size)`
+        """
+        sequence_length = tf.shape(inputs)[1]
+        token_embeddings = self.static_embedding_layer(inputs)
+        positional_encodings = self.positional_matrix[:sequence_length, :]
+        embeddings = tf.add(token_embeddings, positional_encodings)
+        return self.dropout(self.layernorm(embeddings), training=training)
+
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super().get_config()
+        return {
+            **base_config,
+            "max_position_embeddings": self.max_position_embeddings,
+            "min_freq": self.min_freq,
+        }
+
+    @property
+    def max_position_embeddings(self) -> int:
+        return self._max_position_embeddings
+
+    @property
+    def min_freq(self) -> float:
+        return self._min_freq

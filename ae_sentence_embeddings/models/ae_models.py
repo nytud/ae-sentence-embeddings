@@ -8,9 +8,10 @@ import tensorflow as tf
 from tensorflow.keras import Model as KModel, layers as tfl
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
+from tensorflow.keras.initializers import TruncatedNormal
 
-from ae_sentence_embeddings.argument_handling import RnnArgs
-from ae_sentence_embeddings.layers import VaeSampling, RandomSwapLayer
+from ae_sentence_embeddings.argument_handling import RnnArgs, RegularizedEmbeddingArgs
+from ae_sentence_embeddings.layers import VaeSampling, RandomSwapLayer, RegularizedEmbedding
 from ae_sentence_embeddings.models import (
     SentVaeEncoder,
     SentAeDecoder,
@@ -184,6 +185,14 @@ class BertBiRnnVae(BaseAe):
         self.splitter = tfl.Lambda(lambda x: tf.split(x, 2))
         self.swapper = RandomSwapLayer()
         self.decoder = ae_double_gru(rnn_config)
+        dec_embedding_config = RegularizedEmbeddingArgs(
+            vocab_size=rnn_config.vocab_size,
+            hidden_size=rnn_config.hidden_size,
+            initializer_range=rnn_config.initializer_dev,
+            layer_norm_eps=rnn_config.layernorm_eps,
+            hidden_dropout_prob=max([2*rnn_config.dropout_rate, 0.5])
+        )
+        self.dec_embedding_layer = RegularizedEmbedding(dec_embedding_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
         """Call the full model
@@ -200,8 +209,7 @@ class BertBiRnnVae(BaseAe):
         self.add_loss(latent_loss_func(mean, log_var))
         sents1, sents2 = self.splitter(self.sampler((mean, log_var)))
         sents1, sents2 = self.swapper(((sents1, sents2),), training=training)[0]
-        dec_inputs1 = tf.zeros(shape=(tf.shape(sents1)[0], tf.shape(attn_mask)[1],
-                                      tf.shape(sents1)[-1]))
-        dec_inputs2 = tf.identity(dec_inputs1)
+
+        dec_inputs1, dec_inputs2 = self.splitter(self.dec_embedding_layer(input_ids))
         logits = self.decoder((sents1, dec_inputs1, sents2, dec_inputs2), training=training)
         return logits
