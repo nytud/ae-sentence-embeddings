@@ -67,7 +67,7 @@ class OneCycleSchedule(LearningRateSchedule):
             "initial_rate": self.initial_rate,
             "cycle_extremum": self.cycle_extremum,
             "end_extremum": self.end_extremum,
-            "cycle_step_size": self.step_size,
+            "cycle_step_size": self.cycle_step_size,
             "total_steps": self.total_steps,
             "name": self.name
         }

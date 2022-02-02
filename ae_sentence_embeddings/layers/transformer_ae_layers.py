@@ -212,7 +212,7 @@ class SinusoidalEmbedding(RegularizedEmbedding):
         Original source of code:
         https://towardsdatascience.com/master-positional-encoding-part-i-63c05d90a0c3
         """
-        with tf.name_scope("positional_matrix"):
+        with tf.name_scope("positional_matrix") as name:
             position = tf.range(self._max_position_embeddings, dtype=tf.float32)
             mask = tf.range(self._hidden_size)
             sin_mask = tf.cast(mask % 2, tf.float32)
@@ -221,8 +221,7 @@ class SinusoidalEmbedding(RegularizedEmbedding):
             exponent = tf.cast(exponent, tf.float32) / tf.cast(self._hidden_size, tf.float32)
             freqs = self._min_freq ** exponent
             angles = tf.einsum('i,j->ij', position, freqs)
-            pos_enc = tf.math.cos(angles) * cos_mask + tf.math.sin(angles) * sin_mask
-            return pos_enc
+            return tf.add(tf.math.cos(angles) * cos_mask, tf.math.sin(angles) * sin_mask, name=name)
 
     def call(self, inputs: tf.Tensor, training: Optional[bool] = None) -> tf.Tensor:
         """Call the layer

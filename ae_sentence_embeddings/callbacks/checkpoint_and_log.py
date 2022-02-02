@@ -31,29 +31,30 @@ class AeCustomCheckpoint(Callback):
         self.save_optimizer = save_optimizer
         self.batch_id = 0
 
-    def _make_checkpoint(self, path_suffix: Union[int, str]) -> None:
+    def _make_checkpoint(self, subdir_name: Union[int, str]) -> None:
         """Helper function to create checkpoints
 
         Args:
-            path_suffix: A suffix to be added to the model/optimizer checkpoint path
+            subdir_name: A subdirectory for the checkpoint files
         """
-        weight_dir = os_path_join(self.checkpoint_root, f"weight_{path_suffix}.ckpt")
-        optimizer_dir = os_path_join(self.checkpoint_root, f"optim_{path_suffix}.pkl") \
+        subdir_path = os_path_join(self.checkpoint_root, subdir_name)
+        weight_dir = os_path_join(subdir_path, f"weight_{subdir_name}.ckpt")
+        optimizer_dir = os_path_join(subdir_path, f"optim_{subdir_name}.pkl") \
             if self.save_optimizer else None
         self.model.checkpoint(weight_path=weight_dir, optimizer_path=optimizer_dir)
 
     def on_epoch_end(self, epoch: int, logs=None) -> None:
         """Save model if `save_freq == "epoch"`"""
         if self.save_freq == "epoch":
-            self._make_checkpoint(epoch+1)
+            self._make_checkpoint(f"epoch_{epoch+1}")
 
     def on_batch_end(self, batch: int, logs=None) -> None:
         """Create checkpoint or pass according to `save_freq`.
-        Update the global batch ID (number of batch independently from the epoch)
+        Update the global batch ID (number of batch independently of the epoch)
         """
         self.batch_id += 1
         if isinstance(self.save_freq, int) and self.batch_id % self.save_freq == 0:
-            self._make_checkpoint(self.batch_id)
+            self._make_checkpoint(f"step_{self.batch_id}")
 
     def on_train_end(self, logs=None) -> None:
         """Save model on training end if not saved yet"""

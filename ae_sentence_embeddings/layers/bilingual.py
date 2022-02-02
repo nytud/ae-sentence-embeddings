@@ -24,6 +24,14 @@ class RandomSwapLayer(tfl.Layer):
             raise ValueError("`p` should be a floating point number in the interval `[0, 1]`")
         self.p = p
 
+    @staticmethod
+    def _swap_pairs(pairs: TensorPairs) -> TensorPairs:
+        """Helper function to interchange tensors"""
+        outputs = []
+        for pair in pairs:
+            outputs.append(pair[::-1])
+        return tuple(outputs)
+
     def call(self, inputs: TensorPairs, training: Optional[bool] = None) -> TensorPairs:
         """Call the layer
 
@@ -37,11 +45,9 @@ class RandomSwapLayer(tfl.Layer):
         Returns:
             The same tensors as the ones in the input but their order may be interchanged in the pairs
         """
-        if training and random_bernoulli(shape=(), p=self.p) > 0:
-            outputs = []
-            for pair in inputs:
-                outputs.append(pair[::-1])
-            outputs = tuple(outputs)
+        if training:
+            outputs = tf.cond(random_bernoulli(shape=(), p=self.p) > 0,
+                              lambda: self._swap_pairs(inputs), lambda: inputs)
         else:
             outputs = inputs
         return outputs

@@ -1,6 +1,6 @@
 """A module for defining Transformer-based AEs"""
 
-from typing import Tuple, Union, Optional, Literal
+from typing import Tuple, Union, Optional, Literal, Callable, Dict
 import pickle
 from warnings import warn
 
@@ -67,18 +67,22 @@ class BaseAe(KModel):
                 with open(optimizer_path, 'wb') as optimizer_f:
                     pickle.dump(optimizer_weights, optimizer_f)
 
-    def save_weights(
+    def save(
             self,
             filepath: str,
             overwrite: bool = True,
+            include_optimizer: bool = True,
             save_format: Optional[Literal["tf", "h5"]] = None,
-            options: Optional[tf.train.CheckpointOptions] = None
+            signatures: Optional[Union[Callable, Dict]] = None,
+            options: Optional[tf.train.CheckpointOptions] = None,
+            save_traces: bool = True
     ) -> None:
         """Add a warning to the parent class method"""
         warn("This method is useful for fully Keras serializable models. As it might not work as expected, "
              "consider calling `model.save_weights` or `model.checkpoint`")
-        super().save(filepath, overwrite=overwrite, save_format=save_format,
-                     options=options)
+        super().save(filepath, overwrite=overwrite, include_optimizer=include_optimizer,
+                     save_format=save_format, signatures=signatures,
+                     save_traces=save_traces, options=options)
 
 
 class TransformerAe(BaseAe):

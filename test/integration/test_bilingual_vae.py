@@ -4,8 +4,9 @@ loss calculation, logging and model saving
 """
 
 from typing import Tuple
-from os import environ, mkdir, rmdir, listdir
+from os import environ, mkdir, listdir
 from os.path import exists, isfile, join as os_path_join
+from shutil import rmtree
 
 import tensorflow as tf
 import numpy as np
@@ -93,7 +94,7 @@ class BilingualVaeTest(tf.test.TestCase):
     def tearDownClass(cls) -> None:
         """Delete model checkpoint directory after running the tests"""
         if exists(cls.save_root_dir):
-            rmdir(cls.save_root_dir)
+            rmtree(cls.save_root_dir)
         super().tearDownClass()
 
     def _configurate_training(self) -> Tuple[int, BertConfig, RnnArgs, OneCycleArgs, OneCycleArgs]:
