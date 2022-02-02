@@ -18,7 +18,7 @@ class OneCycleTest(tf.test.TestCase):
             cycle_extremum=2.0,
             end_extremum=0.0
         )
-        lr_schedule = OneCycleSchedule(schedule_args)
+        lr_schedule = OneCycleSchedule(**schedule_args.to_dict())
         step_vals = []
         for step in range(15):
             step_vals.append(lr_schedule(step))
@@ -36,7 +36,7 @@ class OneCycleTest(tf.test.TestCase):
             half_cycle=5,
             cycle_extremum=0.0
         )
-        momentum_schedule = OneCycleSchedule(schedule_args)
+        momentum_schedule = OneCycleSchedule(**schedule_args.to_dict())
         step_vals = []
         for step in range(15):
             step_vals.append(momentum_schedule(step))

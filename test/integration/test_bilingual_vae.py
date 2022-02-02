@@ -143,12 +143,17 @@ class BilingualVaeTest(tf.test.TestCase):
         num_epochs, bert_config, rnn_config, lr_args, momentum_args = self._configurate_training()
         callback_args = self._configurate_save_and_log()
         model = BertBiRnnVae(bert_config, rnn_config)
-        lr_schedule = OneCycleSchedule(lr_args)
-        momentum_schedule = OneCycleSchedule(momentum_args)
+        lr_schedule = OneCycleSchedule(**lr_args.to_dict())
+        momentum_schedule = OneCycleSchedule(**momentum_args.to_dict())
+        momentum_values = (momentum_schedule(i) for i in tf.range(momentum_args.total_steps))
+
+        def momentum_fn():
+            return next(momentum_values)
+
         optimizer = AdamW(
             weight_decay=1e-6,
             learning_rate=lr_schedule,
-            beta_1=momentum_schedule,
+            beta_1=momentum_fn,
             amsgrad=True
         )
         callbacks = basic_checkpoint_and_log(callback_args)
