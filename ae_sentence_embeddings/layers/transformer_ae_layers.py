@@ -63,29 +63,55 @@ class VaeSampling(tfl.Layer):
         return K.random_normal(tf.shape(log_var)) * K.exp(log_var / 2) + mean
 
 
-@keras_serializable
 class PostPoolingLayer(tfl.Layer):
     """A layer applied after pooling from the encoder to obtain Gaussian mean and variance values for a VAE"""
-    config_class = BertConfig
 
-    def __init__(self, config: BertConfig, **kwargs):
+    def __init__(self, hidden_size: int, initializer_range: float = 0.02,
+                 layer_norm_eps: float = 1e-12, **kwargs) -> None:
+        """Initialize the layer
+
+        Args:
+            hidden_size: Hidden size of both input and output
+            initializer_range: stddev of a `TruncatedNormal` kernel initializer. Defaults to 0.02
+            layer_norm_eps: Epsilon parameter of layer normalization. Defaults to 1e-12
+            **kwargs: Parent class keyword arguments
+        """
         super().__init__(**kwargs)
-        self.config = config
+        self.hidden_size = hidden_size
+        self.initializer_range = initializer_range
+        self.layer_norm_eps = layer_norm_eps
         dense_params = {
-            "units": self.config.hidden_size,
-            "input_shape": (None, self.config.hidden_size),
-            "kernel_initializer": TruncatedNormal(stddev=self.config.initializer_range)
+            "units": hidden_size,
+            "input_shape": (None, hidden_size),
+            "kernel_initializer": TruncatedNormal(stddev=initializer_range)
         }
         self.post_pool_mean_dense = tfl.Dense(**dense_params, name="post_pool_mean_dense")
         self.post_pool_logvar_dense = tfl.Dense(**dense_params, name="post_pool_logvar_dense")
-        self.post_pool_layernorm = tfl.LayerNormalization(epsilon=config.layer_norm_eps)
+        self.post_pool_layernorm = tfl.LayerNormalization(epsilon=layer_norm_eps)
 
     def call(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Call the layer
+
+        Args:
+            inputs: A tensor of shape `(batch_size, hidden_size)`
+
+        Returns:
+            Two tensors of shape `(batch_size, hidden_size)`
+        """
         mean_tensor = self.post_pool_mean_dense(inputs)
         logvar_tensor = self.post_pool_logvar_dense(inputs)
         mean_tensor = self.post_pool_layernorm(mean_tensor)
         logvar_tensor = self.post_pool_layernorm(logvar_tensor)
         return mean_tensor, logvar_tensor
+
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super().get_config()
+        return {
+            **base_config,
+            "hidden_size": self.hidden_size,
+            "initializer_range": self.initializer_range,
+            "layer_norm_eps": self.layer_norm_eps
+        }
 
 
 class RegularizedEmbedding(tfl.Layer):

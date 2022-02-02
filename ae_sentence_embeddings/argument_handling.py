@@ -186,7 +186,7 @@ class RnnArgs(DeeplArgs):
         dropout_rate: A dropout rate between 0 and 1. Defaults to 0.1
     """
     num_rnn_layers: int = 2
-    hidden_size: int = 2
+    hidden_size: int = 768
     vocab_size: int = 32001
     initializer_dev: float = 0.02
     layernorm_eps: float = 1e-12

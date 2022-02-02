@@ -100,7 +100,9 @@ class SentVaeEncoder(SentAeEncoder):
             **kwargs: Keyword arguments for the parent class
         """
         super().__init__(config, pooling_type, **kwargs)
-        self.post_pooling = PostPoolingLayer(config)
+        hidden_size = 2 * config.hidden_size if self.pooling_type == "cls_sep" else config.hidden_size
+        self.post_pooling = PostPoolingLayer(hidden_size, layer_norm_eps=config.layer_norm_eps,
+                                             initializer_range=config.initializer_range)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Sequence[tf.Tensor]]:

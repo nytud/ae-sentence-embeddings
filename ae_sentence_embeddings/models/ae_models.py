@@ -44,8 +44,8 @@ class BaseAe(KModel):
             dec_config: The decoder configuration object
             **kwargs: Keyword arguments for the parent class
         """
-        if enc_config.vocab_size != dec_config.vocab_size or enc_config.hidden_size != dec_config.n_embd:
-            raise ValueError("Vocab size and hidden size should be the same in the encoder and the decoder")
+        if enc_config.vocab_size != dec_config.vocab_size:
+            raise ValueError("Vocab size and should be the same in the encoder and the decoder")
         super().__init__(**kwargs)
         self.enc_config = enc_config
         self.dec_config = dec_config
