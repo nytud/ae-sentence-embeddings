@@ -1,2 +1,2 @@
-from .checkpoint_and_log import basic_checkpoint_and_log
+from .checkpoint_and_log import basic_checkpoint_and_log, OptimizerInspection
 from .schedulers import OneCycleScheduler

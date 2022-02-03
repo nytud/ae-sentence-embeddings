@@ -1,8 +1,9 @@
 """A module for functions that adapt inputs to layers"""
 
-from typing import Dict, List, Union, Any
+from typing import Dict, List, Union, Any, Optional, Literal
 from argparse import ArgumentParser
 import json
+import logging
 
 import tensorflow as tf
 from tensorflow.python.framework.dtypes import DType
@@ -88,3 +89,42 @@ def get_training_args() -> ArgumentParser:
     parser = ArgumentParser(description="Command line arguments for model ae_training")
     parser.add_argument("config_file", help="Path to a `json` configuration file")
     return parser
+
+
+def get_custom_logger(
+        log_path: str,
+        logger_name: Optional[str] = None,
+        level: Optional[int] = None,
+        log_format: Optional[str] = None,
+        f_mode: Literal['a', 'w'] = 'a',
+        encoding: str = "utf-8"
+) -> logging.Logger:
+    """Get a custom logger instance
+
+    Args:
+        log_path: Path to a file where logs can be written
+        logger_name: Optional. Logger name. If not specified, it will be set to `UserLogger`
+        level: Optional. A valid logging level. If not specified, it will be set to `DEBUG`
+        log_format: Optional. A format for logging messages. If not specified, it will be set to
+                    `"%(asctime)s - %(name)s - %(levelname)s - %(message)s"`
+        f_mode: Opening mode for the log file. Defaults to `'a'` (append)
+        encoding: Log file encoding. Defaults to `"utf-8"`
+
+    Returns:
+        A file logger
+    """
+    if logger_name is None:
+        logger_name = "UserLogger"
+    logger = logging.getLogger(logger_name)
+    if level is None:
+        level = logging.DEBUG
+    logger.setLevel(level)
+    file_handler = logging.FileHandler(
+        filename=log_path, mode=f_mode, encoding=encoding)
+    file_handler.setLevel(level)
+    if log_format is None:
+        log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    formatter = logging.Formatter(log_format)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    return logger

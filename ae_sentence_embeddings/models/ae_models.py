@@ -50,7 +50,7 @@ class BaseAe(KModel):
         self.enc_config = enc_config
         self.dec_config = dec_config
 
-    def checkpoint(self, weight_path: str, optimizer_path: Optional[str]) -> None:
+    def checkpoint(self, weight_path: str, optimizer_path: Optional[str] = None) -> None:
         """Save model and (optionally) optimizer weights.
         This method uses the defaults arguments of the `save_weights` method
 
@@ -66,6 +66,24 @@ class BaseAe(KModel):
                 optimizer_weights = tf.keras.backend.batch_get_value(symbolic_weights)
                 with open(optimizer_path, 'wb') as optimizer_f:
                     pickle.dump(optimizer_weights, optimizer_f)
+
+    def load_checkpoint(self, weight_path: str, optimizer_path: Optional[str] = None,
+                        **kwargs) -> None:
+        """Load model from checkpoint
+
+        Args:
+            weight_path: Path to the saved model weights
+            optimizer_path: Optional. Path to saved optimizer state file
+            **kwargs: Further arguments passed to the `load_weights` method
+        """
+        self.load_weights(weight_path, **kwargs)
+        if optimizer_path is not None:
+            if self.optimizer is None:
+                warn("Cannot load optimizer as no optimizer has been defined")
+            else:
+                with open(optimizer_path, 'rb') as f:
+                    optimizer_weights = pickle.load(f)
+                self.optimizer.set_weights(optimizer_weights)
 
     def save(
             self,

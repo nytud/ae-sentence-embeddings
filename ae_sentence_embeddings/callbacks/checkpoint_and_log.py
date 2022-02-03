@@ -2,8 +2,10 @@
 
 from os.path import join as os_path_join
 from time import strftime
-from typing import List, Union, Literal
+from typing import List, Union, Literal, Tuple
+from logging import Logger
 
+import tensorflow_addons as tfa
 from tensorflow.keras.callbacks import TensorBoard, Callback
 
 from ae_sentence_embeddings.argument_handling import SaveAndLogArgs
@@ -78,3 +80,42 @@ def basic_checkpoint_and_log(save_log_args: SaveAndLogArgs) -> List[Callback]:
                                     save_freq=save_log_args.save_freq,
                                     save_optimizer=save_log_args.save_optimizer)]
     return callbacks
+
+
+class OptimizerInspection(Callback):
+    """A callback that monitors optimizer coefficients.
+    This callback is useful for testing learning rate and momentum scheduling.
+    This callback requires eager execution!
+    """
+
+    def __init__(self, logger: Logger, log_freq: int = 10,
+                 track_beta: bool = False) -> None:
+        """Initialize the callback
+
+        Args:
+            logger: A custom logger instance, which handles the logs
+            log_freq: Log every `log_freq` steps (on batch begin). The count restarts after each epoch.
+                      A log will also be made on epoch ends. Defaults to 10
+            track_beta: Specify whether `beta_1` should be logged. Defaults to `False`
+        """
+        super(OptimizerInspection, self).__init__()
+        self.logger = logger
+        self.log_freq = log_freq
+        self.track_beta = track_beta
+
+    def _get_coefficients(self) -> Tuple[tfa.types.FloatTensorLike, Union[tfa.types.FloatTensorLike, None]]:
+        """Helper function to access optimizer coefficients"""
+        actual_lr = self.model.optimizer.learning_rate
+        actual_beta = getattr(self.model.optimizer, "beta_1", None) if self.track_beta else None
+        return actual_lr, actual_beta
+
+    def on_batch_begin(self, batch: int, logs=None) -> None:
+        if batch % self.log_freq == 0:
+            actual_lr, actual_beta = self._get_coefficients()
+            self.logger.debug(f"Iteration {batch}, learning rate: {actual_lr}, "
+                              f"Momentum: {actual_beta}")
+
+    def on_epoch_end(self, epoch: int, logs=None) -> None:
+        actual_lr, actual_beta = self._get_coefficients()
+        self.logger.debug(f"Epoch {epoch}, learning rate: {actual_lr}, "
+                          f"Momentum: {actual_beta}")
