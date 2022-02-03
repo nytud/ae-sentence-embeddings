@@ -1,6 +1,6 @@
 """A module for implementing the 1cycle schedule"""
 
-from typing import Optional
+from typing import Optional, Callable
 
 import tensorflow as tf
 from tensorflow.keras.optimizers.schedules import LearningRateSchedule
@@ -71,3 +71,16 @@ class OneCycleSchedule(LearningRateSchedule):
             "total_steps": self.total_steps,
             "name": self.name
         }
+
+
+def wrap_one_cycle(schedule: OneCycleSchedule) -> Callable[[None], tf.Tensor]:
+    """Wrap a 1cycle schedule in a function with no arguments
+    This may be necessary for cycling momentum in Adam and AdamW, as their `beta_1` argument
+    does not support schedules
+    """
+    values = (schedule(i) for i in tf.range(schedule.total_steps))
+
+    def one_cycle_fn():
+        return next(values)
+
+    return one_cycle_fn

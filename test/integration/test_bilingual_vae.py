@@ -1,6 +1,5 @@
 """Test a bilingual Transformer-RNN VAE
-This includes testing learning rate schedules, model calling,
-loss calculation, logging and model saving
+This includes testing model calling, logging and model saving
 """
 
 from typing import Tuple
@@ -13,7 +12,7 @@ import numpy as np
 from tensorflow_addons.optimizers import AdamW
 from transformers.models.bert.configuration_bert import BertConfig
 
-from ae_sentence_embeddings.scheduling import OneCycleSchedule
+from ae_sentence_embeddings.scheduling import OneCycleSchedule, wrap_one_cycle
 from ae_sentence_embeddings.argument_handling import RnnArgs, OneCycleArgs, SaveAndLogArgs
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy
 from ae_sentence_embeddings.models import BertBiRnnVae
@@ -78,17 +77,20 @@ class BilingualVaeTest(tf.test.TestCase):
         cls.vocab_size = 256
         cls.max_sequence_length = 32
         cls.epoch_length = 8
-        cls.dataset = _get_dummy_dataset(
+        dataset = _get_dummy_dataset(
             vocab_size=cls.vocab_size,
             max_sequence_length=cls.max_sequence_length,
             batch_size=16,
             num_repeat=cls.epoch_length
         )
+        data_options = tf.data.Options()
+        data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+        cls.dataset = dataset.with_options(data_options).prefetch(1)
         cls.log_root_dir, cls.save_root_dir = _get_root_dirs()
         if len(gpus := tf.config.list_physical_devices("GPU")) > 0:
-            cls.device = gpus[0].name
+            cls.device = "/gpu:" + gpus[0].name[-1]
         else:
-            cls.device = tf.config.list_physical_devices("CPU")[0].name
+            cls.device = "/cpu:" + tf.config.list_physical_devices("CPU")[0].name[-1]
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -143,26 +145,27 @@ class BilingualVaeTest(tf.test.TestCase):
         """Train the model, save it, then continue training"""
         num_epochs, bert_config, rnn_config, lr_args, momentum_args = self._configurate_training()
         callback_args = self._configurate_save_and_log()
-        model = BertBiRnnVae(bert_config, rnn_config)
         lr_schedule = OneCycleSchedule(**lr_args.to_dict())
         momentum_schedule = OneCycleSchedule(**momentum_args.to_dict())
-        momentum_values = (momentum_schedule(i) for i in tf.range(momentum_args.total_steps))
-
-        def momentum_fn():
-            return next(momentum_values)
-
-        optimizer = AdamW(
-            weight_decay=1e-6,
-            learning_rate=lr_schedule,
-            beta_1=momentum_fn,
-            amsgrad=True
-        )
+        momentum_fn = wrap_one_cycle(momentum_schedule)
         callbacks = basic_checkpoint_and_log(callback_args)
-        loss_fn = IgnorantSparseCatCrossentropy(from_logits=True)
-        model.compile(optimizer=optimizer, loss=loss_fn)
-        history = model.fit(x=self.dataset, epochs=num_epochs, callbacks=callbacks)
-        print(f"Saved files:\n{listdir(self.save_root_dir)}")
+
+        strategy = tf.distribute.OneDeviceStrategy(self.device)
+        with strategy.scope():
+            model = BertBiRnnVae(bert_config, rnn_config)
+            optimizer = AdamW(
+                weight_decay=1e-6,
+                learning_rate=lr_schedule,
+                beta_1=momentum_fn,
+                amsgrad=True
+            )
+            loss_fn = IgnorantSparseCatCrossentropy(from_logits=True)
+            model.compile(optimizer=optimizer, loss=loss_fn)
+            history = model.fit(x=self.dataset, epochs=num_epochs, callbacks=callbacks)
+
+        print(model.summary())
         self.assertIsInstance(history, tf.keras.callbacks.History)
+        self.assertGreater(len(listdir(self.save_root_dir)), 0)
 
 
 if __name__ == '__main__':
