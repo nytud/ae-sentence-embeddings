@@ -1,6 +1,6 @@
 """Define loss functions that can ignore a specific label"""
 
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, Tuple
 
 import tensorflow as tf
 from tensorflow.keras.losses import SparseCategoricalCrossentropy

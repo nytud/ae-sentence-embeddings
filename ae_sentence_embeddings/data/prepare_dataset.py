@@ -158,6 +158,30 @@ def post_batch_multilingual(
     return tuple(outputs)
 
 
+def post_batch_feature_pair(
+        feature_tensors: Tuple[tf.Tensor, ...],
+        target_tensors: Tuple[tf.Tensor, ...],
+        num_languages: int = 2
+) -> Tuple[Tuple[Tuple[tf.Tensor, tf.Tensor], ...], Union[Tuple[tf.Tensor], tf.Tensor]]:
+    """Reorganize padded batches of feature tensors into pairs. Leave target tensors unchanged
+
+    Args:
+        feature_tensors: A tuple of feature tensors
+        target_tensors: A tuple of target tensors
+        num_languages: Number of languages. It will be assumed that each feature
+                       is repeated `num_languages` times. Defaults to 2
+
+    Returns:
+        The new feature tensor tuples and the target tensors
+    """
+    pairs = []
+    num_features = len(feature_tensors) // num_languages
+    for i in range(num_features):
+        pair = (feature_tensors[i], feature_tensors[i+num_features])
+        pairs.append(pair)
+    return tuple(pairs), target_tensors
+
+
 def get_train_and_validation(
         data_split_paths: DataSplitPathArgs,
         train_args: DataStreamArgs,

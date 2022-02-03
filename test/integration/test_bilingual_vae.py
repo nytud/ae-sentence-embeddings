@@ -18,6 +18,7 @@ from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentr
 from ae_sentence_embeddings.models import BertBiRnnVae
 from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
+from ae_sentence_embeddings.data import post_batch_feature_pair
 
 
 def _get_dummy_data(
@@ -62,7 +63,7 @@ class BilingualVaeTest(tf.test.TestCase):
     @classmethod
     def setUpClass(cls):
         """Fixture setup. This will do the following:
-            - Define a vocab size, a maximal sequence length and an epoch length
+            - Define a vocab size, a maximal sequence length and the train and dev epoch lengths
             - Create a dummy dataset with input IDs, attention mask and targets
             - Get the environment variables `AE_LOG_ROOT` and `AE_SAVE_ROOT`, which should be paths to
               directories for logging and model checkpoints, respectively. If these variables are not defined
@@ -74,23 +75,26 @@ class BilingualVaeTest(tf.test.TestCase):
         super().setUpClass()
         cls.vocab_size = 256
         cls.max_sequence_length = 64
-        cls.epoch_length = 8
-        input_ids1, attn_mask1, targets1 = _get_dummy_data(
-            vocab_size=cls.vocab_size,
-            max_sequence_length=cls.max_sequence_length,
-            batch_size=16
-        )
-        input_ids2, attn_mask2, targets2 = _get_dummy_data(
-            vocab_size=cls.vocab_size,
-            max_sequence_length=cls.max_sequence_length,
-            batch_size=16
-        )
-        dataset = tf.data.Dataset.from_tensors(
-            ((input_ids1, input_ids2, attn_mask1, attn_mask2), (targets1, targets2)))
-        dataset = dataset.repeat(cls.epoch_length)
+        cls.train_epoch_length = 8
+        cls.dev_epoch_length = 2
+        dummy_data_args = {
+            "vocab_size": cls.vocab_size,
+            "max_sequence_length": cls.max_sequence_length,
+            "batch_size": 16
+        }
+        data_splits = []
         data_options = tf.data.Options()
         data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
-        cls.dataset = dataset.with_options(data_options).prefetch(1)
+        for epoch_length in (cls.train_epoch_length, cls.dev_epoch_length):
+            input_ids1, attn_mask1, targets1 = _get_dummy_data(**dummy_data_args)
+            input_ids2, attn_mask2, targets2 = _get_dummy_data(**dummy_data_args)
+            dataset = tf.data.Dataset.from_tensors(
+                ((input_ids1, input_ids2, attn_mask1, attn_mask2), (targets1, targets2)))
+            dataset = dataset.map(post_batch_feature_pair)
+            dataset = dataset.repeat(epoch_length)
+            dataset = dataset.with_options(data_options).prefetch(1)
+            data_splits.append(dataset)
+        cls.train_dataset, cls.dev_dataset = data_splits
         cls.log_root_dir, cls.save_root_dir = _get_root_dirs()
         if len(gpus := tf.config.list_physical_devices("GPU")) > 0:
             cls.device = "/gpu:" + gpus[0].name[-1]
@@ -120,7 +124,7 @@ class BilingualVaeTest(tf.test.TestCase):
             num_rnn_layers=2
         )
         num_epochs = 2
-        total_steps = self.epoch_length * num_epochs - 1
+        total_steps = self.train_epoch_length * num_epochs - 1
         half_cycle = total_steps // 4
         lr_args = OneCycleArgs(
             initial_rate=0.01,
@@ -165,8 +169,9 @@ class BilingualVaeTest(tf.test.TestCase):
                 amsgrad=True
             )
             loss_fn = IgnorantSparseCatCrossentropy(from_logits=True)
-            model.compile(optimizer=optimizer, loss=loss_fn, run_eagerly=True)
-            history = model.fit(x=self.dataset, epochs=num_epochs, callbacks=callbacks)
+            model.compile(optimizer=optimizer, loss=loss_fn)
+        history = model.fit(x=self.train_dataset, epochs=num_epochs,
+                            validation_data=self.dev_dataset, callbacks=callbacks)
 
         print(model.summary())
         self.assertIsInstance(history, tf.keras.callbacks.History)

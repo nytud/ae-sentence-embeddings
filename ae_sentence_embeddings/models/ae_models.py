@@ -18,7 +18,6 @@ from ae_sentence_embeddings.models import (
     SentAeGRUDecoder,
     ae_double_gru
 )
-from ae_sentence_embeddings.data import post_batch_multilingual
 
 
 @tf.function
@@ -216,19 +215,25 @@ class BertBiRnnVae(BaseAe):
         )
         self.dec_embedding_layer = RegularizedEmbedding(dec_embedding_config)
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
+    def call(self, inputs: Tuple[Tuple[tf.Tensor, tf.Tensor], Tuple[tf.Tensor, tf.Tensor]],
+             training: Optional[bool] = None) -> tf.Tensor:
         """Call the full model
 
         Args:
-            inputs: A tensor of input token IDs and a tensor of attention mask
+            inputs: Two tensor pairs, each of which consists of an input token IDs and
+                    a tensor of attention mask, respectively
             training: Specifies whether the model is being used in training mode
 
         Returns:
             The logits of a probability distribution for next token prediction
         """
-        input_ids, attn_mask = inputs
+        lang1, lang2 = inputs
+        input_ids = tf.concat([lang1[0], lang2[0]], axis=0)
+        attn_mask = tf.concat([lang1[1], lang2[1]], axis=0)
         mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
-        self.add_loss(latent_loss_func(mean, log_var))
+        latent_loss_val = latent_loss_func(mean, log_var)
+        self.add_loss(latent_loss_val)
+        self.add_metric(latent_loss_val, name="KL_loss")
         sents1, sents2 = self.splitter(self.sampler((mean, log_var)))
         sents1, sents2 = self.swapper(((sents1, sents2),), training=training)[0]
 
@@ -236,17 +241,21 @@ class BertBiRnnVae(BaseAe):
         logits = self.decoder((sents1, dec_inputs1, sents2, dec_inputs2), training=training)
         return logits
 
-    def train_step(self, data: Tuple[Tuple[tf.Tensor], Tuple[tf.Tensor]]) -> Dict[str, Any]:
-        """Override the default train step for correct handling of bilingual data"""
+    def train_step(self, data) -> Dict[str, Any]:
+        """Override parent class method in order to handle bilingual data correctly"""
         x, y = data
-        x, y = post_batch_multilingual(x, y)
+        y = tf.concat(y, axis=0)
         with tf.GradientTape() as tape:
             y_pred = self(x, training=True)
-            reg_losses = self.losses
-            loss = self.compiled_loss(y, y_pred, regularization_losses=reg_losses)
-
+            loss = self.compiled_loss(y, y_pred, regularization_losses=self.losses)
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
         self.compiled_metrics.update_state(y, y_pred)
-        return {metric.name: metric.result() for metric in self.metrics}
+        return {m.name: m.result() for m in self.metrics}
+
+    def test_step(self, data) -> Dict[str, Any]:
+        """Override parent class method in order to handle bilingual data correctly"""
+        x, y = data
+        y = tf.concat(y, axis=0)
+        return super().test_step((x, y))

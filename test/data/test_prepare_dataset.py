@@ -10,7 +10,12 @@ from datasets import Dataset as HgfDataset
 from numpy.random import randint
 from numpy import ndarray, array as np_array
 
-from ae_sentence_embeddings.data import convert_to_tf_dataset, pad_and_batch, post_batch_multilingual
+from ae_sentence_embeddings.data import (
+    convert_to_tf_dataset,
+    pad_and_batch,
+    post_batch_multilingual,
+    post_batch_feature_pair
+)
 from ae_sentence_embeddings.argument_handling import DataStreamArgs
 
 
@@ -62,6 +67,11 @@ class TFDatasetTest(tf.test.TestCase):
 
         cls._mono_data = MappingProxyType(mono_data_dict)
         cls._bi_data = MappingProxyType(bi_data_dict)
+        cls._data_to_reorganize = (
+            ([[1, 2], [3, 4]], [[-1, -2], [-3, -4]],
+             [[5, 6], [7, 8]], [[-5, -6], [-7, -8]]),
+            ([[9, 10], [11, 12]], [[-9, -10], [-11, -12]])
+        )
 
     @property
     def mono_data(self) -> MappingProxyType[str, Any]:
@@ -70,6 +80,10 @@ class TFDatasetTest(tf.test.TestCase):
     @property
     def bi_data(self) -> MappingProxyType[str, Any]:
         return self._bi_data
+
+    @property
+    def data_to_reorganize(self) -> Tuple[Tuple[List[List[int]], ...], ...]:
+        return self._data_to_reorganize
 
     @staticmethod
     def data_gen(
@@ -146,16 +160,26 @@ class TFDatasetTest(tf.test.TestCase):
 
     def test_post_batch_multilingual(self) -> None:
         """Test batch reorganization for multilingual data"""
-        input_data = (([[1, 2], [3, 4]], [[-1, -2], [-3, -4]],
-                       [[5, 6], [7, 8]], [[-5, -6], [-7, -8]]),
-                      ([[9, 10], [11, 12]], [[-9, -10], [-11, -12]]))
-        tf_dataset = tf.data.Dataset.from_tensors(input_data)
+        tf_dataset = tf.data.Dataset.from_tensors(self.data_to_reorganize)
         new_dataset = tf_dataset.map(post_batch_multilingual)
         outputs = next(iter(new_dataset))
         expected_features, expected_targets = (
             (tf.constant([[1, 2], [3, 4], [-1, -2], [-3, -4]]),
              tf.constant([[5, 6], [7, 8], [-5, -6], [-7, -8]])),
             tf.constant([[9, 10], [11, 12], [-9, -10], [-11, -12]])
+        )
+        self.assertAllEqual(expected_targets, outputs[1], msg=f"Targets are:\n{outputs[1]}")
+        self.assertAllEqual(expected_features, outputs[0], msg=f"Targets are:\n{outputs[0]}")
+
+    def test_post_batch_feature_pair(self) -> None:
+        """Test feature data reorganization into tuples"""
+        tf_dataset = tf.data.Dataset.from_tensors(self.data_to_reorganize)
+        new_dataset = tf_dataset.map(post_batch_feature_pair)
+        outputs = next(iter(new_dataset))
+        expected_features, expected_targets = (
+            ((tf.constant([[1, 2], [3, 4]]), tf.constant([[5, 6], [7, 8]])),
+             (tf.constant([[-1, -2], [-3, -4]]), tf.constant([[-5, -6], [-7, -8]]))),
+            (tf.constant([[9, 10], [11, 12]]), tf.constant([[-9, -10], [-11, -12]]))
         )
         self.assertAllEqual(expected_targets, outputs[1], msg=f"Targets are:\n{outputs[1]}")
         self.assertAllEqual(expected_features, outputs[0], msg=f"Targets are:\n{outputs[0]}")
