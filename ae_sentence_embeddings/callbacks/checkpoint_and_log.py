@@ -85,7 +85,7 @@ def basic_checkpoint_and_log(save_log_args: SaveAndLogArgs) -> List[Callback]:
 class OptimizerInspection(Callback):
     """A callback that monitors optimizer coefficients.
     This callback is useful for testing learning rate and momentum scheduling.
-    This callback requires eager execution!
+    This callback requires that the learning rate be updated by a learning rate schedule!
     """
 
     def __init__(self, logger: Logger, log_freq: int = 10,
@@ -102,18 +102,20 @@ class OptimizerInspection(Callback):
         self.logger = logger
         self.log_freq = log_freq
         self.track_beta = track_beta
+        self.batch = 0
 
     def _get_coefficients(self) -> Tuple[tfa.types.FloatTensorLike, Union[tfa.types.FloatTensorLike, None]]:
         """Helper function to access optimizer coefficients"""
-        actual_lr = self.model.optimizer.learning_rate
+        actual_lr = self.model.optimizer.learning_rate(self.batch)
         actual_beta = getattr(self.model.optimizer, "beta_1", None) if self.track_beta else None
         return actual_lr, actual_beta
 
     def on_batch_begin(self, batch: int, logs=None) -> None:
-        if batch % self.log_freq == 0:
+        if self.batch % self.log_freq == 0:
             actual_lr, actual_beta = self._get_coefficients()
             self.logger.debug(f"Iteration {batch}, learning rate: {actual_lr}, "
                               f"Momentum: {actual_beta}")
+            self.batch += 1
 
     def on_epoch_end(self, epoch: int, logs=None) -> None:
         actual_lr, actual_beta = self._get_coefficients()
