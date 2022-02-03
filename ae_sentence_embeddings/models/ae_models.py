@@ -1,6 +1,6 @@
 """A module for defining Transformer-based AEs"""
 
-from typing import Tuple, Union, Optional, Literal, Callable, Dict
+from typing import Tuple, Union, Optional, Literal, Callable, Dict, Any
 import pickle
 from warnings import warn
 
@@ -18,6 +18,7 @@ from ae_sentence_embeddings.models import (
     SentAeGRUDecoder,
     ae_double_gru
 )
+from ae_sentence_embeddings.data import post_batch_multilingual
 
 
 @tf.function
@@ -234,3 +235,18 @@ class BertBiRnnVae(BaseAe):
         dec_inputs1, dec_inputs2 = self.splitter(self.dec_embedding_layer(input_ids))
         logits = self.decoder((sents1, dec_inputs1, sents2, dec_inputs2), training=training)
         return logits
+
+    def train_step(self, data: Tuple[Tuple[tf.Tensor], Tuple[tf.Tensor]]) -> Dict[str, Any]:
+        """Override the default train step for correct handling of bilingual data"""
+        x, y = data
+        x, y = post_batch_multilingual(x, y)
+        with tf.GradientTape() as tape:
+            y_pred = self(x, training=True)
+            reg_losses = self.losses
+            loss = self.compiled_loss(y, y_pred, regularization_losses=reg_losses)
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+        self.compiled_metrics.update_state(y, y_pred)
+        return {metric.name: metric.result() for metric in self.metrics}

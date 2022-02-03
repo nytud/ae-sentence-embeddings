@@ -20,13 +20,12 @@ from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
 
 
-def _get_dummy_dataset(
+def _get_dummy_data(
         vocab_size: int,
         max_sequence_length: int,
         batch_size: int,
-        num_repeat: int
-) -> tf.data.Dataset:
-    """Create a dummy dataset from by repeating a single random batch `num_repeat times`"""
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    """Create dummy data from a single random batch"""
     input_ids = [tf.constant(np.random.randint(1, vocab_size, size=(seq_len,)), dtype=tf.int32)
                  for seq_len in np.random.randint(3, max_sequence_length, size=(batch_size,))]
     input_ids = tf.stack([tf.pad(tens, [[0, max_sequence_length - tf.shape(tens)[0]]])
@@ -34,8 +33,7 @@ def _get_dummy_dataset(
     attention_mask = tf.cast(tf.not_equal(input_ids, 0), tf.int32)
     targets = tf.where(tf.equal(attention_mask, 1), input_ids, -1)
     targets = make_decoder_inputs(targets, pad_value=-1)
-    dataset = tf.data.Dataset.from_tensors(((input_ids, attention_mask), targets))
-    return dataset.repeat(num_repeat)
+    return input_ids, attention_mask, targets
 
 
 def _get_root_dirs() -> Tuple[str, str]:
@@ -75,14 +73,21 @@ class BilingualVaeTest(tf.test.TestCase):
         """
         super().setUpClass()
         cls.vocab_size = 256
-        cls.max_sequence_length = 32
+        cls.max_sequence_length = 64
         cls.epoch_length = 8
-        dataset = _get_dummy_dataset(
+        input_ids1, attn_mask1, targets1 = _get_dummy_data(
             vocab_size=cls.vocab_size,
             max_sequence_length=cls.max_sequence_length,
-            batch_size=16,
-            num_repeat=cls.epoch_length
+            batch_size=16
         )
+        input_ids2, attn_mask2, targets2 = _get_dummy_data(
+            vocab_size=cls.vocab_size,
+            max_sequence_length=cls.max_sequence_length,
+            batch_size=16
+        )
+        dataset = tf.data.Dataset.from_tensors(
+            ((input_ids1, input_ids2, attn_mask1, attn_mask2), (targets1, targets2)))
+        dataset = dataset.repeat(cls.epoch_length)
         data_options = tf.data.Options()
         data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
         cls.dataset = dataset.with_options(data_options).prefetch(1)
@@ -160,7 +165,7 @@ class BilingualVaeTest(tf.test.TestCase):
                 amsgrad=True
             )
             loss_fn = IgnorantSparseCatCrossentropy(from_logits=True)
-            model.compile(optimizer=optimizer, loss=loss_fn)
+            model.compile(optimizer=optimizer, loss=loss_fn, run_eagerly=True)
             history = model.fit(x=self.dataset, epochs=num_epochs, callbacks=callbacks)
 
         print(model.summary())
