@@ -5,7 +5,6 @@ from transformers import BertConfig, OpenAIGPTConfig
 import numpy as np
 
 from ae_sentence_embeddings.models import TransformerVae
-from ae_sentence_embeddings.losses_and_metrics.regularization_losses import kl_loss_func
 
 
 class TransformerVaeTest(tf.test.TestCase):
@@ -27,7 +26,7 @@ class TransformerVaeTest(tf.test.TestCase):
             n_head=2,
             n_embd=128,
         )
-        cls.model = TransformerVae(enc_config, dec_config)
+        cls.model = TransformerVae(enc_config, dec_config, pooling_type="average")
 
     def setUp(self) -> None:
         """Fixture setup. Create input token IDs and attention mask"""
@@ -35,16 +34,7 @@ class TransformerVaeTest(tf.test.TestCase):
         self.input_ids = tf.constant(np.random.randint(30, size=(2, 8)), dtype=tf.int32)
         self.attn_mask = tf.constant([[1, 1, 1, 1, 1, 0, 0, 0], [1, 1, 1, 1, 1, 1, 1, 1]])
 
-    def test_latent_loss(self) -> None:
-        """Test latent loss calculation"""
-        mean_vecs = tf.keras.backend.random_normal((2, 64))
-        logvar_vecs = tf.keras.backend.random_normal((2, 64))
-        latent_loss = kl_loss_func(mean_vecs, logvar_vecs)
-        print(f"Latent loss is: {latent_loss}")
-        zero_dim_arr = np.array(0)
-        self.assertShapeEqual(zero_dim_arr, latent_loss)
-
-    def test_model_call(self) -> None:
+    def test_model_transformer_vae_call(self) -> None:
         expected_shape = (2, 8, 30)
         logits = self.model((self.input_ids, self.attn_mask), training=False)
         print(f"The resulting logits are: {logits}")
