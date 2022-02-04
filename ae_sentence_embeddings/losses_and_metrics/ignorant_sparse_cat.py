@@ -1,11 +1,13 @@
 """Define loss functions that can ignore a specific label"""
 
-from typing import Dict, Any, Union, Tuple
+from typing import Dict, Any, Literal
 
 import tensorflow as tf
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
 from tensorflow.keras.losses import Reduction
 from tensorflow.keras.metrics import SparseCategoricalAccuracy
+
+ReductionMode = Literal["sum", "sum_over_batch_size", "average"]
 
 
 def _average_and_sum(loss_tensor: tf.Tensor) -> tf.Tensor:
@@ -22,42 +24,73 @@ def _average_and_sum(loss_tensor: tf.Tensor) -> tf.Tensor:
 
 
 class IgnorantSparseCatCrossentropy(tf.keras.losses.Loss):
+    """Sparse categorical crossentropy that can handle mask values"""
 
     def __init__(
             self,
             mask_label: int = -1,
-            reduction: Union[Reduction.SUM, Reduction.SUM_OVER_BATCH_SIZE] = Reduction.SUM_OVER_BATCH_SIZE,
+            reduction_mode: ReductionMode = "sum_over_batch_size",
             from_logits: bool = False,
+            factor: float = 1.0,
             **kwargs
     ) -> None:
         """Initialize the loss object
 
         Args:
             mask_label: The label that will be ignored. Defaults to -1
-            reduction: Reduction type, `SUM` or `SUM_OVER_BATCH_SIZE`.
-                       Defaults to `SUM_OVER_BATCH_SIZE`, which indicates here averaging over all dimensions
+            reduction: Reduction mode, `"sum"` or `"sum_over_batch_size"`, or `"average"`. Please set this
+                argument instead of the parent class `reduction` argument. An attempt to set `reduction` will
+                lead to and exception. Defaults to `"sum_over_batch_size"`, which indicates averaging over the
+                batch dimension
             from_logits: Specifies whether the inputs are logits. Defaults to `False`
+            factor: A normalizing constant by which the loss value will be multiplied. Defaults to `1.0`
             **kwargs: Additional keyword arguments for the parent class
         """
-        if reduction not in {Reduction.SUM, Reduction.SUM_OVER_BATCH_SIZE}:
-            raise NotImplementedError("Reduction should be either Reduction.SUM or Reduction.SUM_OVER_BATCH_SIZE")
+        if reduction_mode == "sum":
+            self._reduction_func = tf.reduce_sum
+        elif reduction_mode == "average":
+            self._reduction_func = tf.reduce_mean
+        elif reduction_mode == "sum_over_batch_size":
+            self._reduction_func = _average_and_sum
+        else:
+            raise ValueError(f"Unknown reduction mode: {reduction_mode}")
+        self._reduction_mode = reduction_mode
+        if kwargs.get("reduction") is not None:
+            raise TypeError(f"IgnorantSparseCatCrossentropy got an "
+                            f"unexpected keyword argument 'reduction'")
+        super().__init__(**kwargs, reduction=Reduction.NONE)
         self.mask_label = mask_label
+        self._from_logits = from_logits
         self._base_loss = SparseCategoricalCrossentropy(reduction=Reduction.NONE, from_logits=from_logits)
-        super().__init__(**kwargs, reduction=reduction)
-        self._reduction_func = _average_and_sum if self.reduction == Reduction.SUM else tf.reduce_mean
+        self.factor = factor
 
     def call(self, y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
         y_mod = tf.where(y_true == self.mask_label, 0, y_true)
         cross_entropy = self._base_loss(y_mod, y_pred)
         masked_cross_entropy = tf.where(y_true == self.mask_label, 0., cross_entropy)
-        return self._reduction_func(masked_cross_entropy)
+        return tf.multiply(self.factor, self._reduction_func(masked_cross_entropy))
+
+    @property
+    def reduction_mode(self) -> str:
+        return self._reduction_mode
+
+    @property
+    def from_logits(self) -> bool:
+        return self._from_logits
 
     def get_config(self) -> Dict[str, Any]:
         base_config = super().get_config()
-        return {**base_config, "mask_label": self.mask_label, "reduction": self.reduction}
+        return {
+            **base_config,
+            "mask_label": self.mask_label,
+            "reduction_mode": self.reduction_mode,
+            "from_logits": self.from_logits,
+            "factor": self.factor
+        }
 
 
 class IgnorantSparseCatAccuracy(SparseCategoricalAccuracy):
+    """Sparse categorical accuracy that can handle mask labels"""
 
     def __init__(self, mask_label: int = -1, **kwargs) -> None:
         super().__init__(**kwargs)

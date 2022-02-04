@@ -108,7 +108,7 @@ class BilingualVaeTest(tf.test.TestCase):
             rmtree(cls.save_root_dir)
         super().tearDownClass()
 
-    def _configurate_training(self) -> Tuple[int, BertConfig, RnnArgs, OneCycleArgs, OneCycleArgs]:
+    def _configure_training(self) -> Tuple[int, BertConfig, RnnArgs, OneCycleArgs, OneCycleArgs]:
         """Get configuration objects for training"""
         bert_config = BertConfig(
             vocab_size=self.vocab_size,
@@ -141,7 +141,7 @@ class BilingualVaeTest(tf.test.TestCase):
         )
         return num_epochs, bert_config, rnn_config, lr_args, momentum_args
 
-    def _configurate_save_and_log(self) -> SaveAndLogArgs:
+    def _configure_save_and_log(self) -> SaveAndLogArgs:
         """Get checkpoint and log configuration"""
         save_log_args = SaveAndLogArgs(
             checkpoint_path=self.save_root_dir,
@@ -152,9 +152,9 @@ class BilingualVaeTest(tf.test.TestCase):
 
     def test_bert_birnn(self) -> None:
         """Train the model, save it, then continue training"""
-        num_epochs, bert_config, rnn_config, lr_args, momentum_args = self._configurate_training()
+        num_epochs, bert_config, rnn_config, lr_args, momentum_args = self._configure_training()
         logger = get_custom_logger(os_path_join(self.log_root_dir, "integration.log"))
-        callback_args = self._configurate_save_and_log()
+        callback_args = self._configure_save_and_log()
         callbacks = [
             *basic_checkpoint_and_log(callback_args),
             OneCycleScheduler(lr_args, log_freq=1, log_tool=logger),
@@ -163,14 +163,14 @@ class BilingualVaeTest(tf.test.TestCase):
 
         strategy = tf.distribute.OneDeviceStrategy(self.device)
         with strategy.scope():
-            model = BertBiRnnVae(bert_config, rnn_config)
+            model = BertBiRnnVae(bert_config, rnn_config, kl_factor=0.5)
             optimizer = AdamW(
                 weight_decay=1e-6,
                 learning_rate=lr_args.initial_rate,
                 beta_1=momentum_args.initial_rate,
                 amsgrad=True
             )
-            loss_fn = IgnorantSparseCatCrossentropy(from_logits=True)
+            loss_fn = IgnorantSparseCatCrossentropy(from_logits=True, factor=0.5)
             model.compile(optimizer=optimizer, loss=loss_fn)
         history = model.fit(x=self.train_dataset, epochs=num_epochs,
                             validation_data=self.dev_dataset, callbacks=callbacks)

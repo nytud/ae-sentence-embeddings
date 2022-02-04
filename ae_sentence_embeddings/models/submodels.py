@@ -40,10 +40,10 @@ class SentAeEncoder(KModel):
         """
         super().__init__(**kwargs)
         self.config = config
-        self.pooling_type = pooling_type.lower()
-        if self.pooling_type == "average":
+        self._pooling_type = pooling_type.lower()
+        if self._pooling_type == "average":
             self.pooling = AveragePoolingLayer()
-        elif self.pooling_type == "cls_sep":
+        elif self._pooling_type == "cls_sep":
             self.pooling = CLSPlusSEPPooling()
         else:
             raise NotImplementedError(f"Unknown pooling type: {pooling_type}")
@@ -83,6 +83,10 @@ class SentAeEncoder(KModel):
         sequence_output = encoder_outputs[0]
         return self.pooling((sequence_output, attention_mask)), encoder_outputs
 
+    @property
+    def pooling_type(self) -> str:
+        return self._pooling_type
+
 
 class SentVaeEncoder(SentAeEncoder):
     """The full encoder part of a VAE"""
@@ -91,18 +95,25 @@ class SentVaeEncoder(SentAeEncoder):
             self,
             config: BertConfig,
             pooling_type: Literal["average", "cls_sep"] = "cls_sep",
+            kl_factor: float = 1.0,
             **kwargs
     ) -> None:
         """Layer initializer
 
         Args:
             config: A BERT configuration object
+            pooling_type: Pooling type, `average` or `cls_sep`
+            kl_factor: A normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`
             **kwargs: Keyword arguments for the parent class
         """
         super().__init__(config, pooling_type, **kwargs)
         hidden_size = 2 * config.hidden_size if self.pooling_type == "cls_sep" else config.hidden_size
-        self.post_pooling = PostPoolingLayer(hidden_size, layer_norm_eps=config.layer_norm_eps,
-                                             initializer_range=config.initializer_range)
+        self.post_pooling = PostPoolingLayer(
+            hidden_size=hidden_size,
+            layer_norm_eps=config.layer_norm_eps,
+            kl_factor=kl_factor,
+            initializer_range=config.initializer_range
+        )
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Sequence[tf.Tensor]]:
@@ -119,6 +130,14 @@ class SentVaeEncoder(SentAeEncoder):
         pooling_output, encoder_outputs = super().call(inputs, training=training)
         post_pooling_mean, post_pooling_logvar = self.post_pooling(pooling_output)
         return post_pooling_mean, post_pooling_logvar, encoder_outputs
+
+    @property
+    def kl_factor(self) -> float:
+        return self.post_pooling.kl_factor
+
+    def set_kl_factor(self, new_kl_factor: float) -> None:
+        """Setter for `kl_factor`"""
+        self.post_pooling.kl_factor = new_kl_factor
 
 
 class SentAeDecoder(KModel):

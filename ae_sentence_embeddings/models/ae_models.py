@@ -20,28 +20,22 @@ from ae_sentence_embeddings.models import (
 )
 
 
-@tf.function
-def latent_loss_func(mean: tf.Tensor, log_var: tf.Tensor) -> tf.Tensor:
-    """Calculate VAE latent loss
-
-    Args:
-        mean: The Gaussian mean vector
-        log_var: The Gaussian variance vector
-    """
-    latent_loss_value = -0.5 * tf.reduce_sum(1 + (log_var - tf.square(mean) - tf.exp(log_var)), axis=-1)
-    return tf.reduce_mean(latent_loss_value)
-
-
 class BaseAe(KModel):
     """Base class for Transformer AEs. Used for subclassing only"""
 
-    def __init__(self, enc_config: BertConfig,
-                 dec_config: Union[OpenAIGPTConfig, RnnArgs], **kwargs) -> None:
+    def __init__(
+            self,
+            enc_config: BertConfig,
+            dec_config: Union[OpenAIGPTConfig, RnnArgs],
+            pooling_type: Literal["average", "cls_sep"] = "cls_sep",
+            **kwargs
+    ) -> None:
         """Initialize the invariant AE layers that do not depend on the AE architecture choice
 
         Args:
             enc_config: The encoder configuration object
             dec_config: The decoder configuration object
+            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
             **kwargs: Keyword arguments for the parent class
         """
         if enc_config.vocab_size != dec_config.vocab_size:
@@ -49,6 +43,11 @@ class BaseAe(KModel):
         super().__init__(**kwargs)
         self.enc_config = enc_config
         self.dec_config = dec_config
+        self._pooling_type = pooling_type
+
+    @property
+    def pooling_type(self) -> str:
+        return self._pooling_type
 
     def checkpoint(self, weight_path: str, optimizer_path: Optional[str] = None) -> None:
         """Save model and (optionally) optimizer weights.
@@ -103,19 +102,49 @@ class BaseAe(KModel):
                      save_traces=save_traces, options=options)
 
 
+class BaseVae(BaseAe):
+    """Base class for Transformer-based VAE encoders. Use for subclassing only"""
+
+    def __init__(self, enc_config: BertConfig, dec_config: Union[OpenAIGPTConfig, RnnArgs],
+                 pooling_type: Literal["cls_sep", "average"] = "cls_sep",
+                 kl_factor: float = 1.0, **kwargs) -> None:
+        """Initialize the VAE
+
+        Args:
+            enc_config: The encoder configuration object
+            dec_config: The decoder configuration object
+            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
+            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`
+            **kwargs: Keyword arguments for the `keras.Model` class
+        """
+        super().__init__(enc_config, dec_config, pooling_type=pooling_type, **kwargs)
+        self.encoder = SentVaeEncoder(self.enc_config, pooling_type=pooling_type, kl_factor=kl_factor)
+        self.sampler = VaeSampling()
+
+    @property
+    def kl_factor(self) -> float:
+        return self.encoder.kl_factor
+
+    def set_kl_factor(self, new_kl_factor: float) -> None:
+        """Setter for `kl_factor`"""
+        self.encoder.set_kl_factor(new_kl_factor)
+
+
 class TransformerAe(BaseAe):
     """A Transformer-based AE"""
 
-    def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig, **kwargs) -> None:
+    def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig,
+                 pooling_type: Literal["cls_sep", "average"] = "cls_sep", **kwargs) -> None:
         """Initialize the AE
 
         Args:
             enc_config: The encoder configuration object
             dec_config: The decoder configuration object
-            **kwargs: Keyword arguments for the parent class
+            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
+            **kwargs: Keyword arguments for the `keras.Model` class
         """
-        super().__init__(enc_config, dec_config, **kwargs)
-        self.encoder = SentAeEncoder(self.enc_config)
+        super().__init__(enc_config, dec_config, pooling_type=pooling_type, **kwargs)
+        self.encoder = SentAeEncoder(self.enc_config, pooling_type=pooling_type)
         self.decoder = SentAeDecoder(self.dec_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
@@ -135,20 +164,23 @@ class TransformerAe(BaseAe):
         return logits
 
 
-class TransformerVae(BaseAe):
+class TransformerVae(BaseVae):
     """A Transformer-based VAE"""
 
-    def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig, **kwargs) -> None:
+    def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig,
+                 pooling_type: Literal["cls_sep", "average"] = "cls_sep",
+                 kl_factor: float = 1.0, **kwargs) -> None:
         """Initialize the VAE
 
         Args:
             enc_config: The encoder configuration object
             dec_config: The decoder configuration object
-            **kwargs: Keyword arguments for the parent class
+            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
+            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`
+            **kwargs: Keyword arguments for the `keras.Model` class
         """
-        super().__init__(enc_config, dec_config, **kwargs)
-        self.encoder = SentVaeEncoder(self.enc_config)
-        self.sampler = VaeSampling()
+        super().__init__(enc_config, dec_config, pooling_type=pooling_type,
+                         kl_factor=kl_factor, **kwargs)
         self.decoder = SentAeDecoder(self.dec_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
@@ -163,19 +195,19 @@ class TransformerVae(BaseAe):
         """
         input_ids, attn_mask = inputs
         mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
-        self.add_loss(latent_loss_func(mean, log_var))
         sent_embedding = self.sampler((mean, log_var))
         logits = self.decoder(inputs=(sent_embedding, input_ids, attn_mask), training=training)
         return logits
 
 
-class BertRnnVae(BaseAe):
+class BertRnnVae(BaseVae):
     """A VAE with a Bert encoder and an RNN decoder"""
 
-    def __init__(self, enc_config: BertConfig, rnn_config: RnnArgs, **kwargs) -> None:
-        super().__init__(enc_config, rnn_config, **kwargs)
-        self.encoder = SentVaeEncoder(self.enc_config)
-        self.sampler = VaeSampling()
+    def __init__(self, enc_config: BertConfig, rnn_config: RnnArgs,
+                 pooling_type: Literal["average", "cls_sep"] = "cls_sep",
+                 kl_factor: float = 1.0, **kwargs) -> None:
+        super().__init__(enc_config, rnn_config, pooling_type=pooling_type,
+                         kl_factor=kl_factor, **kwargs)
         self.decoder = SentAeGRUDecoder(self.dec_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
@@ -190,19 +222,28 @@ class BertRnnVae(BaseAe):
         """
         input_ids, attn_mask = inputs
         mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
-        self.add_loss(latent_loss_func(mean, log_var))
         sent_embedding = self.sampler((mean, log_var))
         logits = self.decoder((sent_embedding, input_ids, attn_mask), training=training)
         return logits
 
 
-class BertBiRnnVae(BaseAe):
+class BertBiRnnVae(BaseVae):
     """A Transformer-RNN VAE for bilingual training"""
 
-    def __init__(self, enc_config: BertConfig, rnn_config: RnnArgs, **kwargs) -> None:
-        super().__init__(enc_config, rnn_config, **kwargs)
-        self.encoder = SentVaeEncoder(self.enc_config)
-        self.sampler = VaeSampling()
+    def __init__(self, enc_config: BertConfig, rnn_config: RnnArgs,
+                 pooling_type: Literal["cls_sep", "average"] = "cls_sep",
+                 kl_factor: float = 1.0, **kwargs) -> None:
+        """Initialize the model
+
+        Args:
+            enc_config: a BERT configuration object
+            rnn_config: an RNN (GRU) configuration object
+            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
+            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`
+            **kwargs: Keyword arguments for the `keras.Model` class
+        """
+        super().__init__(enc_config, rnn_config, pooling_type=pooling_type,
+                         kl_factor=kl_factor, **kwargs)
         self.splitter = tfl.Lambda(lambda x: tf.split(x, 2))
         self.swapper = RandomSwapLayer()
         self.decoder = ae_double_gru(rnn_config)
@@ -231,9 +272,6 @@ class BertBiRnnVae(BaseAe):
         input_ids = tf.concat([lang1[0], lang2[0]], axis=0)
         attn_mask = tf.concat([lang1[1], lang2[1]], axis=0)
         mean, log_var, _ = self.encoder((input_ids, attn_mask), training=training)
-        latent_loss_val = latent_loss_func(mean, log_var)
-        self.add_loss(latent_loss_val)
-        self.add_metric(latent_loss_val, name="KL_loss")
         sents1, sents2 = self.splitter(self.sampler((mean, log_var)))
         sents1, sents2 = self.swapper(((sents1, sents2),), training=training)[0]
 

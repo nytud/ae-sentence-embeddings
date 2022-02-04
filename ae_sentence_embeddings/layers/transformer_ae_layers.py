@@ -11,6 +11,7 @@ from transformers.models.openai.modeling_tf_openai import TFBlock
 from transformers.modeling_tf_utils import keras_serializable
 
 from ae_sentence_embeddings.argument_handling import PositionalEmbeddingArgs, RegularizedEmbeddingArgs
+from ae_sentence_embeddings.losses_and_metrics import kl_loss_func
 
 
 @keras_serializable
@@ -67,19 +68,21 @@ class PostPoolingLayer(tfl.Layer):
     """A layer applied after pooling from the encoder to obtain Gaussian mean and variance values for a VAE"""
 
     def __init__(self, hidden_size: int, initializer_range: float = 0.02,
-                 layer_norm_eps: float = 1e-12, **kwargs) -> None:
+                 layer_norm_eps: float = 1e-12, kl_factor: float = 1.0, **kwargs) -> None:
         """Initialize the layer
 
         Args:
             hidden_size: Hidden size of both input and output
             initializer_range: stddev of a `TruncatedNormal` kernel initializer. Defaults to 0.02
             layer_norm_eps: Epsilon parameter of layer normalization. Defaults to 1e-12
+            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`
             **kwargs: Parent class keyword arguments
         """
         super().__init__(**kwargs)
         self.hidden_size = hidden_size
         self.initializer_range = initializer_range
         self.layer_norm_eps = layer_norm_eps
+        self.kl_factor = kl_factor
         dense_params = {
             "units": hidden_size,
             "input_shape": (None, hidden_size),
@@ -102,6 +105,9 @@ class PostPoolingLayer(tfl.Layer):
         logvar_tensor = self.post_pool_logvar_dense(inputs)
         mean_tensor = self.post_pool_layernorm(mean_tensor)
         logvar_tensor = self.post_pool_layernorm(logvar_tensor)
+        latent_loss_val = tf.multiply(self.kl_factor, kl_loss_func(mean_tensor, logvar_tensor))
+        self.add_loss(latent_loss_val)
+        self.add_metric(latent_loss_val, name="KL_loss")
         return mean_tensor, logvar_tensor
 
     def get_config(self) -> Dict[str, Any]:
