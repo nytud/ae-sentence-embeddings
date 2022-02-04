@@ -12,11 +12,11 @@ import numpy as np
 from tensorflow_addons.optimizers import AdamW
 from transformers.models.bert.configuration_bert import BertConfig
 
-from ae_sentence_embeddings.scheduling import OneCycleSchedule, wrap_one_cycle
+from ae_sentence_embeddings.modeling_tools import get_custom_logger
 from ae_sentence_embeddings.argument_handling import RnnArgs, OneCycleArgs, SaveAndLogArgs
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy
 from ae_sentence_embeddings.models import BertBiRnnVae
-from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log
+from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log, OneCycleScheduler
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
 from ae_sentence_embeddings.data import post_batch_feature_pair
 
@@ -153,19 +153,21 @@ class BilingualVaeTest(tf.test.TestCase):
     def test_bert_birnn(self) -> None:
         """Train the model, save it, then continue training"""
         num_epochs, bert_config, rnn_config, lr_args, momentum_args = self._configurate_training()
+        logger = get_custom_logger(os_path_join(self.log_root_dir, "integration.log"))
         callback_args = self._configurate_save_and_log()
-        lr_schedule = OneCycleSchedule(**lr_args.to_dict())
-        momentum_schedule = OneCycleSchedule(**momentum_args.to_dict())
-        momentum_fn = wrap_one_cycle(momentum_schedule)
-        callbacks = basic_checkpoint_and_log(callback_args)
+        callbacks = [
+            *basic_checkpoint_and_log(callback_args),
+            OneCycleScheduler(lr_args, log_freq=1, log_tool=logger),
+            OneCycleScheduler(momentum_args, log_tool=logger, log_freq=1, parameter="beta_1")
+        ]
 
         strategy = tf.distribute.OneDeviceStrategy(self.device)
         with strategy.scope():
             model = BertBiRnnVae(bert_config, rnn_config)
             optimizer = AdamW(
                 weight_decay=1e-6,
-                learning_rate=lr_schedule,
-                beta_1=momentum_fn,
+                learning_rate=lr_args.initial_rate,
+                beta_1=momentum_args.initial_rate,
                 amsgrad=True
             )
             loss_fn = IgnorantSparseCatCrossentropy(from_logits=True)
