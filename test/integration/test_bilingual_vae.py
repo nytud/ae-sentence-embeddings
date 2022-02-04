@@ -16,7 +16,7 @@ from ae_sentence_embeddings.modeling_tools import get_custom_logger
 from ae_sentence_embeddings.argument_handling import RnnArgs, OneCycleArgs, SaveAndLogArgs
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy
 from ae_sentence_embeddings.models import BertBiRnnVae
-from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log, OneCycleScheduler
+from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log, OneCycleScheduler, DevEvaluator
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
 from ae_sentence_embeddings.data import post_batch_feature_pair
 
@@ -158,7 +158,8 @@ class BilingualVaeTest(tf.test.TestCase):
         callbacks = [
             *basic_checkpoint_and_log(callback_args),
             OneCycleScheduler(lr_args, log_freq=1, log_tool=logger),
-            OneCycleScheduler(momentum_args, log_tool=logger, log_freq=1, parameter="beta_1")
+            OneCycleScheduler(momentum_args, log_tool=logger, log_freq=1, parameter="beta_1"),
+            DevEvaluator(self.dev_dataset, logger=logger, log_freq=5)
         ]
 
         strategy = tf.distribute.OneDeviceStrategy(self.device)
@@ -172,8 +173,7 @@ class BilingualVaeTest(tf.test.TestCase):
             )
             loss_fn = IgnorantSparseCatCrossentropy(from_logits=True, factor=0.5)
             model.compile(optimizer=optimizer, loss=loss_fn)
-        history = model.fit(x=self.train_dataset, epochs=num_epochs,
-                            validation_data=self.dev_dataset, callbacks=callbacks)
+        history = model.fit(x=self.train_dataset, epochs=num_epochs, callbacks=callbacks)
 
         print(model.summary())
         self.assertIsInstance(history, tf.keras.callbacks.History)

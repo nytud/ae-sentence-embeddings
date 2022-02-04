@@ -2,11 +2,13 @@
 
 from os.path import join as os_path_join
 from time import strftime
-from typing import List, Union, Literal, Tuple
+from typing import List, Union, Literal, Tuple, Dict, Any
 from logging import Logger
 
+import tensorflow as tf
 import tensorflow_addons as tfa
 from tensorflow.keras.callbacks import TensorBoard, Callback
+import wandb
 
 from ae_sentence_embeddings.argument_handling import SaveAndLogArgs
 
@@ -121,3 +123,58 @@ class OptimizerInspection(Callback):
         actual_lr, actual_beta = self._get_coefficients()
         self.logger.debug(f"Epoch {epoch}, learning rate: {actual_lr}, "
                           f"Momentum: {actual_beta}")
+
+
+class DevEvaluator(Callback):
+    """A callback that runs a full evaluation epoch after specified training batches"""
+
+    def __init__(self, dev_data: tf.data.Dataset, logger: Union[Logger, Literal["wandb", "WandB"]],
+                 log_freq: int = 1000) -> None:
+        """Initialize the callback
+
+        Args:
+            dev_data: A TensorFlow dataset on which the model will be evaluated
+            logger: A custom logger instance or `"wandb"`. In the latter case, logs will be sent directly to WandB.
+                If it is a logger, debug messages will be passed to it
+            log_freq: Log every `log_freq` steps (on batch end). A log will also be made on epoch ends.
+                Defaults to 1000
+        """
+        super().__init__()
+        self.dev_data = dev_data
+        self.log_freq = log_freq
+        self._logger = None
+        self._logging_method = None
+        self.set_logger(logger)
+        self.iteration = 0
+
+    def _simple_log(self, dev_logs: Dict[str, Any]) -> None:
+        """Log `rate` to a simple logger"""
+        self._logger.debug(f"Evaluation results at iteration {self.iteration}:\n{dev_logs}")
+
+    def _wandb_log(self, dev_logs: Dict[str, Any]) -> None:
+        """Log iteration and `rate` to WandB"""
+        wandb.log({"iteration": self.iteration, **dev_logs})
+
+    def on_train_batch_end(self, batch: int, logs=None) -> None:
+        if (self.iteration + 1) % self.log_freq == 0:
+            results = self.model.evaluate(self.dev_data, return_dict=True)
+            self._logging_method(results)
+        self.iteration += 1
+
+    def on_epoch_end(self, epoch: int, logs=None) -> None:
+        if self.iteration % self.log_freq != 0:
+            results = self.model.evaluate(self.dev_data, return_dict=True)
+            self._logging_method(results)
+
+    @property
+    def logger(self) -> Logger:
+        return self._logger
+
+    def set_logger(self, new_logger: Union[Logger, Literal["wandb", "WandB"]]) -> None:
+        if isinstance(new_logger, Logger):
+            self._logging_method = self._simple_log
+        elif isinstance(new_logger, str) and new_logger.lower() == "wandb":
+            self._logging_method = self._wandb_log
+        else:
+            raise ValueError(f"Unknown logger: {new_logger}")
+        self._logger = new_logger
