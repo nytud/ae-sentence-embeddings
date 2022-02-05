@@ -148,12 +148,13 @@ class DevEvaluator(Callback):
         self.iteration = 0
 
     def _simple_log(self, dev_logs: Dict[str, Any]) -> None:
-        """Log `rate` to a simple logger"""
+        """Log results to a simple logger"""
         self._logger.debug(f"Evaluation results at iteration {self.iteration}:\n{dev_logs}")
 
-    def _wandb_log(self, dev_logs: Dict[str, Any]) -> None:
-        """Log iteration and `rate` to WandB"""
-        wandb.log({"iteration": self.iteration, **dev_logs})
+    @staticmethod
+    def _wandb_log(dev_logs: Dict[str, Any]) -> None:
+        """Log results to WandB. This will not be committed automatically!"""
+        wandb.log({"dev_" + key: value for key, value in dev_logs.items()}, commit=False)
 
     def on_train_batch_end(self, batch: int, logs=None) -> None:
         if (self.iteration + 1) % self.log_freq == 0:

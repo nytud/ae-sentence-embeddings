@@ -78,8 +78,8 @@ class OneCycleScheduler(Callback):
         self.log_tool.debug(f"Rate of {self.name} at iteration {self.iteration}: {rate}")
 
     def _wandb_log(self, rate: tf.Tensor) -> None:
-        """Log iteration and `rate` to WandB"""
-        wandb.log({"iteration": self.iteration, self.name: rate})
+        """Log `rate` to WandB. This will not be committed automatically!"""
+        wandb.log({self.name: rate}, commit=False)
 
     def _set_lr(self, rate: tf.Tensor) -> None:
         """Set model learning rate"""

@@ -133,3 +133,4 @@ dmypy.json
 
 # Training
 run/
+wandb/
