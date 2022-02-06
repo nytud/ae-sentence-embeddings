@@ -2,6 +2,7 @@
 
 from typing import Optional, Literal, Dict, Any, Union
 from logging import Logger
+from warnings import warn
 
 import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
@@ -13,8 +14,7 @@ from ae_sentence_embeddings.scheduling import OneCycleSchedule
 
 
 class OneCycleScheduler(Callback):
-    """A 1cycle scheduler for learning rate or momentum
-    """
+    """A 1cycle scheduler for learning rate or momentum"""
 
     def __init__(
             self,
@@ -24,11 +24,11 @@ class OneCycleScheduler(Callback):
             log_freq: int = 10,
             name: Optional[str] = None
     ) -> None:
-        """
-        Initialize the one-cycle scheduler
+        """Initialize the one-cycle scheduler
 
         Args:
-            schedule_args: A `LearningRateArgs` or `OneCycleArgs` object that contains the schedule arguments
+            schedule_args: A `LearningRateArgs` or `OneCycleArgs` (recommended) object that contains the
+                schedule arguments
             parameter: The optimizer parameter to be tuned, learning rate or momentum. Defaults to `lr`,
                 which stands for learning rate
             log_tool: Optional. If a logger, the rate will be passed to it as a debug message. The log can
@@ -60,22 +60,23 @@ class OneCycleScheduler(Callback):
         else:
             raise ValueError(f"Parameter {parameter} cannot be cycled")
 
-        self.log_tool = log_tool
+        self.name = name if name is not None else parameter + "_scheduler"
+        self._log_tool = log_tool
         self.log_freq = log_freq
-
-        if isinstance(self.log_tool, Logger):
+        if isinstance(log_tool, Logger):
             self.log_method = self._simple_log
-        elif self.log_tool in {"wandb", "WandB"}:
+        elif isinstance(log_tool, str) and log_tool.lower() == "wandb":
             self.log_method = self._wandb_log
         else:
             self.log_method = None
+            if log_tool is not None:
+                warn(f"Unrecognized logging tool: {log_tool}. Logging will not be done for {self.name}")
 
-        self.name = name if name is not None else parameter + "_scheduler"
         self.iteration = 0
 
     def _simple_log(self, rate: tf.Tensor) -> None:
         """Log `rate` to a simple logger"""
-        self.log_tool.debug(f"Rate of {self.name} at iteration {self.iteration}: {rate}")
+        self._log_tool.debug(f"Rate of {self.name} at iteration {self.iteration}: {rate}")
 
     def _wandb_log(self, rate: tf.Tensor) -> None:
         """Log `rate` to WandB. This will not be committed automatically!"""
@@ -95,3 +96,7 @@ class OneCycleScheduler(Callback):
         if self.log_method is not None and self.iteration % self.log_freq == 0:
             self.log_method(rate)
         self.iteration += 1
+
+    @property
+    def log_tool(self) -> Union[Logger, Literal["wandb", "WandB"]]:
+        return self._log_tool

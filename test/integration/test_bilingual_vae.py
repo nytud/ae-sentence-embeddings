@@ -145,7 +145,7 @@ class BilingualVaeTest(tf.test.TestCase):
         """Get checkpoint and log configuration"""
         save_log_args = SaveAndLogArgs(
             checkpoint_path=self.save_root_dir,
-            log_path=self.log_root_dir,
+            log_tool=self.log_root_dir,
             log_update_freq=2
         )
         return save_log_args

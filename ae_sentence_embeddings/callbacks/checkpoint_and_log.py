@@ -17,7 +17,7 @@ class AeCustomCheckpoint(Callback):
     """A custom class for AE checkpoints"""
 
     def __init__(self, checkpoint_root: str,
-                 save_freq: Union[Literal["epoch"], str] = "epoch",
+                 save_freq: Union[Literal["epoch"], int] = "epoch",
                  save_optimizer: bool = True) -> None:
         """Initialize the callback
 
@@ -76,7 +76,9 @@ def basic_checkpoint_and_log(save_log_args: SaveAndLogArgs) -> List[Callback]:
         A list of two callbacks (`ModelCheckpoint` and `TensorBoard`)
 
     """
-    log_dir = os_path_join(save_log_args.log_path, strftime("run_%Y_%m_%d-%H_%M_%S"))
+    if not isinstance(save_log_args.log_tool, str) or save_log_args.log_tool.lower() == "wandb":
+        raise ValueError("It is required to pass a `Tensorboard` path to `save_log_args.log_tool`")
+    log_dir = os_path_join(save_log_args.log_tool, strftime("run_%Y_%m_%d-%H_%M_%S"))
     callbacks = [TensorBoard(log_dir=log_dir, update_freq=save_log_args.log_update_freq),
                  AeCustomCheckpoint(checkpoint_root=save_log_args.checkpoint_path,
                                     save_freq=save_log_args.save_freq,
