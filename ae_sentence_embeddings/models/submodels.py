@@ -2,7 +2,7 @@
 Defining them as a model allows to use them separately after pre-training
 """
 
-from typing import Tuple, Sequence, Optional, Literal
+from typing import Tuple, Sequence, Optional, Literal, Dict, Any
 
 import tensorflow as tf
 from tensorflow.keras import Model as KModel
@@ -10,6 +10,7 @@ from tensorflow.keras import layers as tfl
 from tensorflow.keras.initializers import TruncatedNormal
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
+from transformers.modeling_tf_utils import keras_serializable
 
 from ae_sentence_embeddings.layers import (
     AeTransformerEncoder,
@@ -87,6 +88,19 @@ class SentAeEncoder(KModel):
     def pooling_type(self) -> str:
         return self._pooling_type
 
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super().get_config()
+        return {
+            **base_config,
+            "encoder_config": self.config.to_dict(),
+            "pooling_type": self.pooling_type
+        }
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any], custom_objects: Optional[Dict[str, Any]] = None):
+        encoder_config = BertConfig(**config.pop("encoder_config"))
+        return cls(encoder_config, **config)
+
 
 class SentVaeEncoder(SentAeEncoder):
     """The full encoder part of a VAE"""
@@ -139,9 +153,19 @@ class SentVaeEncoder(SentAeEncoder):
         """Setter for `kl_factor`"""
         self.post_pooling.kl_factor = new_kl_factor
 
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super().get_config()
+        return {
+            **base_config,
+            "kl_factor": self.kl_factor
+        }
 
+
+@keras_serializable
 class SentAeDecoder(KModel):
     """The full decoder part of the autoencoder"""
+
+    config_class = OpenAIGPTConfig
 
     def __init__(self, config: OpenAIGPTConfig, **kwargs) -> None:
         """Layer initializer
@@ -234,6 +258,18 @@ class SentAeGRUDecoder(KModel):
         hidden_output = self.decoder((sent_embeddings, token_embeddings), training=training)
         logits = self.out_dense(hidden_output)
         return logits
+
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super().get_config()
+        return {
+            **base_config,
+            "decoder_config": self.config.to_dict(),
+        }
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any], custom_objects: Optional[Dict[str, Any]] = None):
+        decoder_config = RnnArgs(**config.pop("decoder_config"))
+        return cls(decoder_config)
 
 
 def ae_double_gru(rnn_config: RnnArgs) -> KModel:

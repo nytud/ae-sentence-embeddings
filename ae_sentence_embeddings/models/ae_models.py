@@ -101,6 +101,21 @@ class BaseAe(KModel):
                      save_format=save_format, signatures=signatures,
                      save_traces=save_traces, options=options)
 
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super(BaseAe, self).get_config()
+        return {
+            **base_config,
+            "encoder_config": self.enc_config,
+            "decoder_config": self.dec_config,
+            "pooling_type": self.pooling_type
+        }
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any], custom_objects: Optional[Dict[str, Any]] = None):
+        encoder_config = config.pop("encoder_config")
+        decoder_config = config.pop("decoder_config")
+        return cls(encoder_config, decoder_config, **config)
+
 
 class BaseVae(BaseAe):
     """Base class for Transformer-based VAE encoders. Use for subclassing only"""
@@ -128,6 +143,13 @@ class BaseVae(BaseAe):
     def set_kl_factor(self, new_kl_factor: float) -> None:
         """Setter for `kl_factor`"""
         self.encoder.set_kl_factor(new_kl_factor)
+
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super(BaseAe, self).get_config()
+        return {
+            **base_config,
+            "kl_factor": self.kl_factor
+        }
 
 
 class TransformerAe(BaseAe):

@@ -34,8 +34,9 @@ class AeGruDecoder(tfl.Layer):
             units=self._hidden_size,
             recurrent_dropout=self.dropout_rate,
             return_sequences=True,
-            return_state=True
-        ) for _ in range(self._num_rnn_layers)]
+            return_state=True,
+            name=f"ae_GRU_{i}"
+        ) for i in range(self._num_rnn_layers)]
         self.dropout = tfl.Dropout(self.dropout_rate)
         self.layernorm = tfl.LayerNormalization(epsilon=self.layernorm_eps)
 

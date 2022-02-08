@@ -97,7 +97,7 @@ def pretrain_transformer_ae(
         devices: Optional[Sequence[str]] = None,
         verbose: Literal[0, 1, 2] = 2
 ) -> History:
-    """Do pre-training
+    """Do pre-train
 
     Args:
         model_type_name: model class name as a string
@@ -192,7 +192,7 @@ def pretrain_transformer_ae(
     with strategy.scope():
         model = model_type(
             enc_config=encoder_config, dec_config=decoder_config, pooling_type=pooling_type)
-        if getattr(model, "kl_factor", None) is not None and kl_factor != 1.0:
+        if hasattr(model, "kl_factor") and kl_factor != 1.0:
             model.set_kl_factor(kl_factor)
         optimizer = AdamW(**adamw_args.to_dict())
         model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
