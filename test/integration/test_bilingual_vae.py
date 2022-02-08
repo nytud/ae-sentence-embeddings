@@ -14,7 +14,7 @@ from transformers.models.bert.configuration_bert import BertConfig
 
 from ae_sentence_embeddings.modeling_tools import get_custom_logger
 from ae_sentence_embeddings.argument_handling import RnnArgs, OneCycleArgs, SaveAndLogArgs
-from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy
+from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
 from ae_sentence_embeddings.models import BertBiRnnVae
 from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log, OneCycleScheduler, DevEvaluator
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
@@ -172,7 +172,7 @@ class BilingualVaeTest(tf.test.TestCase):
                 amsgrad=True
             )
             loss_fn = IgnorantSparseCatCrossentropy(from_logits=True, factor=0.5)
-            model.compile(optimizer=optimizer, loss=loss_fn)
+            model.compile(optimizer=optimizer, loss=loss_fn, metrics=[IgnorantSparseCatAccuracy()])
         history = model.fit(x=self.train_dataset, epochs=num_epochs, callbacks=callbacks)
 
         print(model.summary())
