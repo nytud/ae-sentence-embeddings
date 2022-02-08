@@ -179,6 +179,22 @@ class BilingualVaeTest(tf.test.TestCase):
         self.assertIsInstance(history, tf.keras.callbacks.History)
         self.assertGreater(len(listdir(self.save_root_dir)), 0)
 
+    def test_serialization(self) -> None:
+        """Test whether the model can be correctly serialized"""
+        _, bert_config, rnn_config, *_ = self._configure_training()
+        model0 = BertBiRnnVae(bert_config, rnn_config)
+        x = next(iter(self.train_dataset))[0]
+        pred0 = model0.predict_on_batch(x)
+        model0.save((save_path := os_path_join(self.save_root_dir, "whole_model")))
+        print("Model0 architecture:")
+        model0.summary()
+        del model0
+        model1 = tf.keras.models.load_model(save_path)
+        print("Model1 architecture:")
+        model1.summary()
+        pred1 = model1.predict_on_batch(x)
+        self.assertAllEqual(pred0.shape, pred1.shape)
+
 
 if __name__ == '__main__':
     tf.test.main()
