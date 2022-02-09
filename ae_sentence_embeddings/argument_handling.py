@@ -5,8 +5,18 @@ from dataclasses import dataclass
 from typing import Mapping, Dict, Any, Union, Optional, Sequence, Callable, Literal
 from inspect import signature
 from logging import Logger
+import re
+from functools import partial
 
 from transformers import BertConfig, OpenAIGPTConfig
+
+
+def _subst_func(word: str, pattern: re.Pattern, repl: str) -> str:
+    """A function for regexp replacements. Input returned in lowercase"""
+    return pattern.sub(repl, word).lower()
+
+
+camel_to_snake = partial(_subst_func, pattern=re.compile(r'(?<!^)([A-Z])'), repl=r'_\1')
 
 
 class DeeplArgs:
@@ -17,11 +27,16 @@ class DeeplArgs:
         """Create a DeeplArgs instance from a dictionary. Ignore irrelevant keys
 
         Args:
-            args_dict: A dictionary from which the data will be collected
-            prefix: An expected prefix of key names in `args_dict`. This can be useful if `args_dict` contains
-                arguments of multiple dataclasses with possibly overlapping keys. Defaults to the empty string
+            args_dict: A dictionary from which the data will be collected. If a key is provided that is the snake_case
+                class name and its value is a dictionary D, then it will be attempted to collect the data field
+                values from D
+            prefix: An expected prefix of key names in the dictionary from which the data fields should be collected.
+                This can be useful if the dictionary contains arguments of multiple dataclasses with possibly
+                overlapping keys. Defaults to the empty string
         """
-        filtered_args = {stripped_key: val for key, val in args_dict.items()
+        subdict_key = camel_to_snake(cls.__name__)
+        config_dict = args_dict[subdict_key] if isinstance(args_dict.get(subdict_key), dict) else args_dict
+        filtered_args = {stripped_key: val for key, val in config_dict.items()
                          if (stripped_key := key.lstrip(prefix)) in signature(cls).parameters}
         result = cls(**filtered_args) if filtered_args else None
         return result
@@ -136,7 +151,7 @@ class OneCycleArgs(DeeplArgs):
 
 
 @dataclass
-class AdamWArgs(DeeplArgs):
+class AdamwArgs(DeeplArgs):
     """A dataclass for AdamW optimizer arguments
     For details on the fields, see `https://www.tensorflow.org/addons/api_docs/python/tfa/optimizers/AdamW`
     """
@@ -144,7 +159,11 @@ class AdamWArgs(DeeplArgs):
     learning_rate: Union[float, Callable] = 1e-5
     beta_1: Union[float, Callable] = 0.9
     beta_2: Union[float, Callable] = 0.999
-    amsgrad: bool = True
+    amsgrad: Union[bool, int] = True
+
+    def __post_init__(self) -> None:
+        """Convert the `amsgrad` argument to Boolean if it is an integer"""
+        self.amsgrad = bool(self.amsgrad)
 
 
 @dataclass
@@ -205,15 +224,6 @@ class RnnArgs(DeeplArgs):
         """Check argument values"""
         if self.dropout_rate > 1 or self.dropout_rate < 0:
             raise ValueError("The dropout rate should be between 0 and 1")
-
-    @classmethod
-    def collect_from_dict(cls, args_dict: Mapping[str, Any], prefix: str = "") -> DeeplArgs:
-        """Override the parent method so that the arguments can be collected from a sub-dictionary"""
-        if (subdict_key := "rnn_config") in args_dict.keys():
-            result = super().collect_from_dict(args_dict[subdict_key], prefix=prefix)
-        else:
-            result = super().collect_from_dict(args_dict, prefix=prefix)
-        return result
 
 
 @dataclass

@@ -1,34 +1,51 @@
 """A module for pre-training"""
 
+from collections import namedtuple
+from copy import deepcopy
 from os import environ
-from typing import Mapping, Tuple, Any, Optional, Sequence, Union, Literal
+from typing import Mapping, Any, Optional, Sequence, Union, Literal, Dict
 
 import tensorflow as tf
-from tensorflow.keras.callbacks import History, EarlyStopping
+from tensorflow.keras.callbacks import History
 from tensorflow_addons.optimizers import AdamW
 from transformers import BertConfig, OpenAIGPTConfig
 from wandb.keras import WandbCallback
 
+from ae_sentence_embeddings.ae_training.model_type_config import (
+    multilingual_models,
+    model_type_map,
+    rnn_decoder_models
+)
 from ae_sentence_embeddings.argument_handling import (
     DataStreamArgs,
-    LearningRateArgs,
-    AdamWArgs,
+    AdamwArgs,
     SaveAndLogArgs,
-    TransformerConfigs,
     DataSplitPathArgs,
     OneCycleArgs,
-    RnnArgs
+    RnnArgs,
+    camel_to_snake
 )
 from ae_sentence_embeddings.callbacks import (
     AeCustomCheckpoint,
     OneCycleScheduler,
-    DevEvaluator,
-    basic_checkpoint_and_log
+    DevEvaluator
 )
 from ae_sentence_embeddings.data import get_train_and_validation, post_batch_feature_pair
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
-from ae_sentence_embeddings.models import TransformerVae
-from ae_sentence_embeddings.ae_training.model_type_config import multilingual_models, model_type_map
+
+GroupedArgs = namedtuple("GroupedArgs", ["data_split_path_args", "data_stream_args", "adamw_args",
+                         "lr_one_cycle_args", "momentum_one_cycle_args", "save_and_log_args"])
+ModelArgs = namedtuple("ModelArgs", ["model_type_name", "encoder_config", "decoder_config", "pooling_type"])
+
+
+def _underscored_snake_from_camel(word: Union[str, type]) -> str:
+    """Convert CamelCase to snake_case and append an underscore.
+    If the input is a type, the snake_cased and underscored class name will be returned"""
+    if isinstance(word, str):
+        snake_word = camel_to_snake(word)
+    else:
+        snake_word = camel_to_snake(word.__name__)
+    return snake_word + '_'
 
 
 def devices_setup(devices: Optional[Sequence[str]] = None) -> int:
@@ -53,38 +70,111 @@ def devices_setup(devices: Optional[Sequence[str]] = None) -> int:
     return num_gpus
 
 
-def group_arguments(args: Mapping[str, Any]
-                    ) -> Tuple[DataSplitPathArgs, DataStreamArgs, LearningRateArgs, AdamWArgs, SaveAndLogArgs]:
-    """Get dataclasses from a single mapping of all arguments
+def group_train_args_from_structured(args: Mapping[str, Any]) -> GroupedArgs:
+    """Get training-related dataclasses from a single json-style data structure
 
     Args:
-        args: A mapping between all argument names and values
+        args: A json-style data structure
 
     Returns:
-        Five specialized dataclasses for the arguments of dataset split preparation, data streaming,
-        learning rate scheduling, AdamW optimizer and model saving/logging, respectively
-
+        Six specialized dataclasses for the arguments of dataset split preparation, data streaming,
+        AdamW optimizer, learning rate scheduling, momentum scheduling and model saving/logging, respectively.
+        They are returned in a `namedtuple`
     """
     dataset_split_paths = DataSplitPathArgs.collect_from_dict(args)
     data_args = DataStreamArgs.collect_from_dict(args)
-    lr_args = LearningRateArgs.collect_from_dict(args)
-    adamw_args = AdamWArgs.collect_from_dict(args)
+    adamw_args = AdamwArgs.collect_from_dict(args)
+    if "one_cycle_args" in args.keys():
+        lr_args = OneCycleArgs.collect_from_dict(args, prefix="lr_")
+        momentum_args = OneCycleArgs.collect_from_dict(args, prefix="momentum_")
+    else:
+        lr_args = None
+        momentum_args = None
     save_log_args = SaveAndLogArgs.collect_from_dict(args)
-    return dataset_split_paths, data_args, lr_args, adamw_args, save_log_args
+    grouped_args = GroupedArgs(dataset_split_paths, data_args, adamw_args,
+                               lr_args, momentum_args, save_log_args)
+    return grouped_args
 
 
-def get_transformer_configs(config_dict: Mapping[str, Any]) -> TransformerConfigs:
-    bert_config = BertConfig(**config_dict["bert_config"])
-    gpt_config = OpenAIGPTConfig(**config_dict["gpt_config"])
-    return TransformerConfigs(bert_config, gpt_config)
+def group_train_args_from_flat(args: Mapping[str, Any]) -> GroupedArgs:
+    """Get training-related dataclasses from a single flat dictionary
+
+    Args:
+        args: A flat dictionary that is required to prefix dataclass field names with the snake_case dataclass names
+
+    Returns:
+        Six specialized dataclasses for the arguments of dataset split preparation, data streaming,
+        AdamW optimizer, learning rate scheduling, momentum scheduling and model saving/logging, respectively.
+        They are returned in a `namedtuple`
+    """
+    dataset_split_paths = DataSplitPathArgs.collect_from_dict(
+        args, prefix=_underscored_snake_from_camel(DataSplitPathArgs))
+    data_args = DataStreamArgs.collect_from_dict(args, prefix=_underscored_snake_from_camel(DataStreamArgs))
+    adamw_args = AdamwArgs.collect_from_dict(args, prefix=_underscored_snake_from_camel(AdamwArgs))
+    one_cycle_keys = [key for key in args.keys() if key.startswith(_underscored_snake_from_camel(OneCycleArgs))]
+    if len(one_cycle_keys) > 0:
+        one_cycle_prefix = _underscored_snake_from_camel(OneCycleArgs)
+        lr_args = OneCycleArgs.collect_from_dict(args, prefix=one_cycle_prefix + "lr_")
+        momentum_args = OneCycleArgs.collect_from_dict(args, prefix=one_cycle_prefix + "momentum_")
+    else:
+        lr_args = None
+        momentum_args = None
+    save_log_args = SaveAndLogArgs.collect_from_dict(args, prefix=_underscored_snake_from_camel(SaveAndLogArgs))
+    grouped_args = GroupedArgs(dataset_split_paths, data_args, adamw_args,
+                               lr_args, momentum_args, save_log_args)
+    return grouped_args
+
+
+def group_model_args_from_flat(config_dict: Mapping[str, Any]) -> ModelArgs:
+    """Get model configuration data structures from a flat dictionary
+
+    Args:
+        config_dict: A flat dictionary that is required to prefix dataclass field names with
+            the snake_case dataclass names
+
+    Returns:
+        The model type name (the class name), the encoder configuration object, the decoder configuration object
+            and the pooling type (a string). These are returned as a namedtuple
+    """
+    model_type_name = config_dict["model_type"]
+    encoder_config = BertConfig(**{k.lstrip(bert_config_pref): v for k, v in config_dict.values()
+                                   if k.startswith((bert_config_pref := "bert_config_"))})
+    if model_type_name in rnn_decoder_models:
+        decoder_config = RnnArgs.collect_from_dict(config_dict, prefix=_underscored_snake_from_camel(RnnArgs))
+    else:
+        decoder_config = OpenAIGPTConfig(**{k.lstrip(gpt_config_pref): v for k, v in config_dict.values()
+                                            if k.startswith((gpt_config_pref := "openai_gpt_config_"))})
+    pooling_type = config_dict["pooling_type"]
+    return ModelArgs(model_type_name, encoder_config, decoder_config, pooling_type)
+
+
+def flatten_nested_dict(nested_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Flatten a json-style structure (nested dictionary)
+
+    Args:
+        nested_data: A json-style data structure. Only the first level of nesting will be flattened.
+            The new keys that originally come from a nested dict will be prefixed with the name of the
+            key whose value was the nested dict
+
+    Returns:
+        The flattened dictionary
+    """
+    flattened_dict = {}
+    for key, value in deepcopy(nested_data).items():
+        if isinstance(value, dict):
+            for nested_key, nested_value in value.items():
+                flattened_dict['_'.join([key, nested_key])] = nested_value
+        else:
+            flattened_dict[key] = value
+    return flattened_dict
 
 
 def pretrain_transformer_ae(
         model_type_name: str,
         dataset_split_paths: DataSplitPathArgs, *,
-        data_args: DataStreamArgs,
-        adamw_args: AdamWArgs,
-        save_log_args: SaveAndLogArgs,
+        data_stream_args: DataStreamArgs,
+        adamw_args: AdamwArgs,
+        save_and_log_args: SaveAndLogArgs,
         validation_freq: Union[int, Literal["epoch"]],
         encoder_config: BertConfig,
         decoder_config: Union[OpenAIGPTConfig, RnnArgs],
@@ -102,9 +192,9 @@ def pretrain_transformer_ae(
     Args:
         model_type_name: model class name as a string
         dataset_split_paths: Paths to the dataset splits as a dataclass
-        data_args: Data streaming arguments as a dataclass
+        data_stream_args: Data streaming arguments as a dataclass
         adamw_args: AdamW optimizer arguments as a dataclass
-        save_log_args: Model checkpoint and logging arguments as a dataclass
+        save_and_log_args: Model checkpoint and logging arguments as a dataclass
         validation_freq: Specify how often to validate: After each epoch (value `"epoch"`)
             or after `validation_freq` iterations (if integer)
         encoder_config: Encoder configuration data
@@ -127,7 +217,7 @@ def pretrain_transformer_ae(
     data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
     train_dataset, dev_dataset = get_train_and_validation(
         data_split_paths=dataset_split_paths,
-        train_args=data_args,
+        train_args=data_stream_args,
         cache_dir=dataset_cache_dir
     )
     if model_type_name in multilingual_models:
@@ -137,17 +227,17 @@ def pretrain_transformer_ae(
     dev_dataset = dev_dataset.with_options(data_options).prefetch(2)
 
     callbacks = [AeCustomCheckpoint(
-        checkpoint_root=save_log_args.checkpoint_path,
-        save_freq=save_log_args.save_freq,
-        save_optimizer=save_log_args.save_optimizer
+        checkpoint_root=save_and_log_args.checkpoint_path,
+        save_freq=save_and_log_args.save_freq,
+        save_optimizer=save_and_log_args.save_optimizer
     )]
     if validation_freq != "epoch":
-        if save_log_args.log_tool is None:
+        if save_and_log_args.log_tool is None:
             raise ValueError(
                 "Please specify a logging tool if validation is to be made more frequently than after each epoch")
         callbacks.append(DevEvaluator(
             dev_data=dev_dataset,
-            logger=save_log_args.log_tool,
+            logger=save_and_log_args.log_tool,
             log_freq=validation_freq,
         ))
         fit_validation_data = None
@@ -157,25 +247,25 @@ def pretrain_transformer_ae(
         lr_scheduler = OneCycleScheduler(
             schedule_args=lr_args,
             parameter="lr",
-            log_tool=save_log_args.log_tool,
-            log_freq=save_log_args.log_update_freq
+            log_tool=save_and_log_args.log_tool,
+            log_freq=save_and_log_args.log_update_freq
         )
         callbacks.append(lr_scheduler)
     if momentum_args is not None:
         momentum_scheduler = OneCycleScheduler(
             schedule_args=momentum_args,
             parameter="beta_1",
-            log_tool=save_log_args.log_tool,
-            log_freq=save_log_args.log_update_freq
+            log_tool=save_and_log_args.log_tool,
+            log_freq=save_and_log_args.log_update_freq
         )
         callbacks.append(momentum_scheduler)
-    if isinstance(save_log_args.log_tool, str):
-        if save_log_args.log_tool.lower() == "wandb":
+    if isinstance(save_and_log_args.log_tool, str):
+        if save_and_log_args.log_tool.lower() == "wandb":
             callbacks.append(WandbCallback(
                 monitor="loss",
                 save_model=False,
                 predictions=100,
-                log_batch_frequency=save_log_args.log_update_freq
+                log_batch_frequency=save_and_log_args.log_update_freq
             ))
         else:
             raise NotImplementedError(
@@ -205,41 +295,3 @@ def pretrain_transformer_ae(
         verbose=verbose
     )
     return history
-
-
-def hparam_search(
-        train_ds: tf.data.Dataset,
-        dev_ds: tf.data.Dataset,
-        lr_args: LearningRateArgs,
-        adamw_args: AdamWArgs,
-        transformer_configs: TransformerConfigs,
-        save_log_args: SaveAndLogArgs
-) -> float:
-    """Training for hyperparameter tuning
-
-    Args:
-        train_ds: The ae_training dataset
-        dev_ds: The validation dataset
-        lr_args: Learning rate scheduler arguments as a dataclass
-        adamw_args: AdamW optimizer arguments as a dataclass
-        transformer_configs: Transformer configurations as a dataclass
-        save_log_args: Model checkpoint and logging arguments as a dataclass
-
-    Returns:
-        The validation loss as a single floating point number
-
-    """
-    scheduler = OneCycleScheduler(lr_args)
-    log_callback = basic_checkpoint_and_log(save_log_args)[0]
-    strategy = tf.distribute.MirroredStrategy()
-    with strategy.scope():
-        model = TransformerVae(enc_config=transformer_configs.bert_config,
-                               dec_config=transformer_configs.gpt_config)
-        optimizer = AdamW(**adamw_args.to_dict())
-        model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True))
-    history = model.fit(
-        x=train_ds,
-        callbacks=[scheduler, log_callback, EarlyStopping(patience=2)],
-        validation_data=dev_ds
-    )
-    return history.history["val_loss"]
