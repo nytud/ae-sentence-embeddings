@@ -37,7 +37,7 @@ class DeeplArgs:
         subdict_key = camel_to_snake(cls.__name__)
         config_dict = args_dict[subdict_key] if isinstance(args_dict.get(subdict_key), dict) else args_dict
         filtered_args = {stripped_key: val for key, val in config_dict.items()
-                         if (stripped_key := key.lstrip(prefix)) in signature(cls).parameters}
+                         if (stripped_key := key[len(prefix):]) in signature(cls).parameters.keys()}
         result = cls(**filtered_args) if filtered_args else None
         return result
 
@@ -185,7 +185,11 @@ class SaveAndLogArgs(DeeplArgs):
     log_tool: Optional[Union[str, Logger]] = None
     save_freq: Union[Literal["epoch"], int] = "epoch"
     log_update_freq: Union[Literal["epoch"], int] = "epoch"
-    save_optimizer: bool = True
+    save_optimizer: Union[bool, int] = True
+
+    def __post_init__(self) -> None:
+        """If `save_optimizer` is an integer, convert is to Boolean"""
+        self.save_optimizer = bool(self.save_optimizer)
 
 
 @dataclass
