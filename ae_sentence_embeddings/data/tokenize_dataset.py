@@ -168,8 +168,8 @@ def tokenize_special(
     for text_col_name in text_col_names:
         res = tokenizer.encode(example[text_col_name])
         text_col_name_stripped = text_col_name.lstrip("text")
-        names_and_values = zip([input_ids_name, "attention_mask"],
-                               [tf.expand_dims(tf.constant(x), axis=0) for x in [res.ids, res.attention_mask]]),
+        names_and_values = ((input_ids_name, tf.expand_dims(tf.constant(res.ids), axis=0)),
+                            ("attention_mask", tf.expand_dims(tf.constant(res.attention_mask), axis=0)))
         custom_res = _process_tokenization_features(
             names_and_values=names_and_values,
             input_ids_name=input_ids_name,
