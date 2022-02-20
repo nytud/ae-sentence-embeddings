@@ -12,6 +12,7 @@ class PoolingTest(tf.test.TestCase):
         """Fixture setup. This will create a tensor of 3 axes that will be the test input
         and a tensor of 2 axes that will be used as an attention mask tensor
         """
+        super().setUp()
         hs_matrix = [[n]*6 for n in range(1, 5)]
         self.hidden_states = tf.constant([hs_matrix, hs_matrix], dtype=tf.float32)
         self.attn_mask = tf.constant([[1, 1, 1, 1], [1, 1, 1, 0]])

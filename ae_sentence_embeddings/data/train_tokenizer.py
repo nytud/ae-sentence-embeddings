@@ -13,7 +13,7 @@ def get_tokenizer_training_args() -> Namespace:
     """Get command line arguments for tokenizer training"""
     parser = ArgumentParser(description="Arguments for training a BPE tokenizer from scratch")
     parser.add_argument("training_file", help="Path to train plain text training corpus")
-    parser.add_argument("save_path", help="Path where the trained tokenizer will be saved")
+    parser.add_argument("save_path", help="Path to a `.json` file where the trained tokenizer will be saved")
     parser.add_argument("--vocab-size", dest="vocab_size", type=int, default=30000,
                         help="Required vocabulary size. Defaults to 30000")
     parser.add_argument("--max-length", dest="max_length", type=int,
