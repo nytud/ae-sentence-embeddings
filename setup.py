@@ -12,7 +12,7 @@ setuptools.setup(
     description='A package for ae_training Transformer-based autoencoders',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    packages=setuptools.find_packages(exclude=['tests', 'examples']),
+    packages=setuptools.find_packages(exclude=['test', 'examples']),
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',

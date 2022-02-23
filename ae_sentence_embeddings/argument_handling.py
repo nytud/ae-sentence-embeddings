@@ -1,7 +1,10 @@
-"""A module for dataclasses that can help handle ae_training and data arguments"""
+"""A module for dataclasses that can help handle training and data arguments.
+The module also contains helper tools for argparse
+"""
 
 from __future__ import annotations
 from dataclasses import dataclass
+from os.path import isfile, isdir
 from typing import Mapping, Dict, Any, Union, Optional, Sequence, Callable, Literal
 from inspect import signature
 from logging import Logger
@@ -278,3 +281,23 @@ class DataSplitPathArgs(DeeplArgs):
     train_path: str
     dev_path: str
     test_path: Optional[str] = None
+
+
+def is_correct_path(path_string: str, check_function: Callable[[str], bool]) -> str:
+    """Returned the passed argument if it is a valid path.
+    Otherwise, raise `ValueError`.
+
+    Args:
+        path_string: The string that is expected to represent a path
+        check_function: A function that checks whether `path_string` satisfies certain criteria
+
+    Returns:
+        The value of `path_string` if it is a valid argument
+    """
+    if not check_function(path_string):
+        raise ValueError(f"Invalid command line argument: {path_string} is not a valid path.")
+    return path_string
+
+
+is_file_path = partial(is_correct_path, check_function=isfile)
+is_dir_path = partial(is_correct_path, check_function=isdir)

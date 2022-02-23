@@ -5,7 +5,7 @@ from copy import deepcopy
 from functools import partial
 
 import tensorflow as tf
-from tensorflow.data import Dataset as TFDataset
+from tensorflow.data import Dataset as TFDataset  # This is a correct import. PyCharm may not find `data`.
 from datasets import Dataset as HgfDataset, load_dataset
 
 from ae_sentence_embeddings.argument_handling import DataStreamArgs, DataSplitPathArgs
@@ -23,8 +23,8 @@ def convert_to_tf_dataset(dataset: HgfDataset) -> TFDataset:
         A TensorFlow dataset
 
     """
-    target_names = ('target', 'label')
-    target_cols = sorted([col for col in dataset.features.keys() if col.startswith(target_names)],
+    target_names = ("target", "label")
+    target_cols = sorted((col for col in dataset.features.keys() if col.startswith(target_names)),
                          reverse=True)
     feature_cols = sorted([feature_col for feature_col in dataset.features.keys()
                            if feature_col not in target_cols and not feature_col.startswith("text")],

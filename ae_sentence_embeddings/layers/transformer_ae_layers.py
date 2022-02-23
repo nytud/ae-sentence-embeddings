@@ -2,7 +2,7 @@
 
 from typing import Tuple, Optional, Dict, Any, Union
 import tensorflow as tf
-from tensorflow.keras import layers as tfl, backend as K
+from tensorflow.keras import layers as tfl, backend as keras_backend
 from tensorflow.keras.initializers import TruncatedNormal
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.bert.modeling_tf_bert import TFBertEncoder
@@ -61,7 +61,7 @@ class VaeSampling(tfl.Layer):
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], *args, **kwargs) -> tf.Tensor:
         """Sample from a Gaussian"""
         mean, log_var = inputs
-        return K.random_normal(tf.shape(log_var)) * K.exp(log_var / 2) + mean
+        return keras_backend.random_normal(tf.shape(log_var)) * keras_backend.exp(log_var / 2) + mean
 
 
 class PostPoolingLayer(tfl.Layer):

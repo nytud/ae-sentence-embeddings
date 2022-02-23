@@ -6,7 +6,7 @@ from warnings import warn
 
 import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
-from tensorflow.keras import backend as K
+from tensorflow.keras import backend as keras_backend
 import wandb
 
 from ae_sentence_embeddings.argument_handling import LearningRateArgs, OneCycleArgs
@@ -84,11 +84,11 @@ class OneCycleScheduler(Callback):
 
     def _set_lr(self, rate: tf.Tensor) -> None:
         """Set model learning rate"""
-        K.set_value(self.model.optimizer.learning_rate, rate)
+        keras_backend.set_value(self.model.optimizer.learning_rate, rate)
 
     def _set_momentum(self, rate: tf.Tensor) -> None:
         """Set momentum coefficient"""
-        K.set_value(self.model.optimizer.beta_1, rate)
+        keras_backend.set_value(self.model.optimizer.beta_1, rate)
 
     def on_train_batch_begin(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
         rate = self.schedule(self.iteration)

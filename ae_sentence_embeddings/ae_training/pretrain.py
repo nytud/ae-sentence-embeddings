@@ -45,7 +45,7 @@ def _underscored_snake_from_camel(word: Union[str, type]) -> str:
         snake_word = camel_to_snake(word)
     else:
         snake_word = camel_to_snake(word.__name__)
-    return snake_word + '_'
+    return snake_word + "_"
 
 
 def devices_setup(devices: Optional[Sequence[str]] = None) -> int:
@@ -64,7 +64,7 @@ def devices_setup(devices: Optional[Sequence[str]] = None) -> int:
         gpus = [device for device in devices if device.lower().startswith(("gpu", "/gpu"))]
         num_gpus = len(gpus)
         if num_gpus != 0:
-            gpus = ",".join([gpu[-1] for gpu in gpus])
+            gpus = ",".join(gpu[-1] for gpu in gpus)
             environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             environ["CUDA_VISIBLE_DEVICES"] = gpus
     return num_gpus
@@ -111,8 +111,7 @@ def group_train_args_from_flat(args: Mapping[str, Any]) -> GroupedArgs:
         args, prefix=_underscored_snake_from_camel(DataSplitPathArgs))
     data_args = DataStreamArgs.collect_from_dict(args, prefix=_underscored_snake_from_camel(DataStreamArgs))
     adamw_args = AdamwArgs.collect_from_dict(args, prefix=_underscored_snake_from_camel(AdamwArgs))
-    one_cycle_keys = [key for key in args.keys() if key.startswith(_underscored_snake_from_camel(OneCycleArgs))]
-    if len(one_cycle_keys) > 0:
+    if any(key for key in args.keys() if key.startswith(_underscored_snake_from_camel(OneCycleArgs))):
         one_cycle_prefix = _underscored_snake_from_camel(OneCycleArgs)
         lr_args = OneCycleArgs.collect_from_dict(args, prefix=one_cycle_prefix + "lr_")
         momentum_args = OneCycleArgs.collect_from_dict(args, prefix=one_cycle_prefix + "momentum_")
@@ -163,7 +162,7 @@ def flatten_nested_dict(nested_data: Dict[str, Any]) -> Dict[str, Any]:
     for key, value in deepcopy(nested_data).items():
         if isinstance(value, dict):
             for nested_key, nested_value in value.items():
-                flattened_dict['_'.join([key, nested_key])] = nested_value
+                flattened_dict["_".join([key, nested_key])] = nested_value
         else:
             flattened_dict[key] = value
     return flattened_dict
