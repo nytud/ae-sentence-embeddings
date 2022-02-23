@@ -40,7 +40,8 @@ ModelArgs = namedtuple("ModelArgs", ["model_type_name", "encoder_config", "decod
 
 def _underscored_snake_from_camel(word: Union[str, type]) -> str:
     """Convert CamelCase to snake_case and append an underscore.
-    If the input is a type, the snake_cased and underscored class name will be returned"""
+    If the input is a type, the snake_cased and underscored class name will be returned
+    """
     if isinstance(word, str):
         snake_word = camel_to_snake(word)
     else:

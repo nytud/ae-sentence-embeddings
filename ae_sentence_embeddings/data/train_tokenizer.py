@@ -1,7 +1,8 @@
 """A script for training a BPE tokenizer with the `tokenizers` library"""
 
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Union
 from argparse import Namespace, ArgumentParser
+from os.path import isfile
 
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
@@ -9,21 +10,32 @@ from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.processors import TemplateProcessing
 
+from ae_sentence_embeddings.argument_handling import arg_checker
+
+
+@arg_checker
+def is_positive(x: Union[str, int, float]) -> bool:
+    """Check if an integer is positive"""
+    if not isinstance(x, int):
+        x = int(x)
+    return x > 0
+
 
 def get_tokenizer_training_args() -> Namespace:
     """Get command line arguments for tokenizer training"""
     parser = ArgumentParser(description="Arguments for training a BPE tokenizer from scratch")
-    parser.add_argument("training_file", help="Path to train plain text training corpus")
+    parser.add_argument("training_file", type=arg_checker(isfile),
+                        help="Path to the plain text training corpus")
     parser.add_argument("save_path", help="Path to a `.json` file where the trained tokenizer will be saved")
-    parser.add_argument("--vocab-size", dest="vocab_size", type=int, default=30000,
+    parser.add_argument("--vocab-size", dest="vocab_size", default=30000, type=is_positive,
                         help="Required vocabulary size. Defaults to 30000")
-    parser.add_argument("--max-length", dest="max_length", type=int,
+    parser.add_argument("--max-length", dest="max_length", type=is_positive,
                         help="Optional. Maximal sequence length to which longer sequences will be truncated. "
                              "If not specified, truncation will not be used")
-    parser.add_argument("--unk-token", dest="unk_token", default="[UNK]",
+    parser.add_argument("--unk-token", dest="unk_token", default="[UNK]", type=arg_checker(lambda x: len(x) > 0),
                         help="Unknown token. Defaults to `'[UNK]'`")
     parser.add_argument("--special-tokens", nargs='*', dest="special_tokens",
-                        help="Optional. A list of special tokens aprt from the unknown token. If a CLS+SEP "
+                        help="Optional. A list of special tokens apart from the unknown token. If a CLS+SEP "
                              "post-processing templated is used, it is expected to list special tokens in the "
                              "following order: (CLS token, SEP token, other tokens).")
     parser.add_argument("--avoid-cls-sep-template", dest="use_cls_sep_template", action="store_false",
@@ -59,18 +71,21 @@ def train_bpe(
     """
     tokenizer = Tokenizer(BPE(unk_token=unk_token))
     if special_tokens is None:
-        special_tokens = [unk_token, "[CLS]", "[SEP]", "[PAD]", "[MASK]"]
-    else:
-        special_tokens = [unk_token] + list(special_tokens)
+        special_tokens = ["[CLS]", "[SEP]", "[PAD]", "[MASK]"]
+    elif not isinstance(special_tokens, list):
+        special_tokens = list(special_tokens)
+    if len(special_tokens) < 4:
+        raise ValueError("There should be at least 4 special tokens: cls, sep, pad and mask.")
+    if special_tokens[0] != unk_token:
+        special_tokens.insert(0, unk_token)
     trainer = BpeTrainer(special_tokens=special_tokens, vocab_size=vocab_size, **kwargs)
     tokenizer.pre_tokenizer = Whitespace()
     tokenizer.train(files, trainer)
     if use_cls_sep_template:
-        cls_token = special_tokens[1]
-        sep_token = special_tokens[2]
+        cls_token, sep_token = special_tokens[1:3]
         tokenizer.post_processor = TemplateProcessing(
-            single=' '.join([cls_token, "$A", sep_token]),
-            pair=' '.join([cls_token, "$A", sep_token, "$B:1", sep_token]) + ":1",
+            single=f"{cls_token} $A {sep_token}",
+            pair=f"{cls_token} $A {sep_token} $B:1 {sep_token}:1",
             special_tokens=[
                 (cls_token, tokenizer.token_to_id(cls_token)),
                 (sep_token, tokenizer.token_to_id(sep_token)),

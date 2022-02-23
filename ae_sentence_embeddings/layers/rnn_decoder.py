@@ -108,8 +108,8 @@ class AeGRUCellDecoder(tfl.Layer):
         self.rnn_layers = [tfl.GRUCell(self._hidden_size) for _ in range(self._num_rnn_layers)]
         self.dense_layers = [tfl.Dense(
             units=self._hidden_size,
-            activation='tanh',
-            kernel_initializer='glorot_uniform',
+            activation="tanh",
+            kernel_initializer="glorot_uniform",
             input_shape=(None, None, self._hidden_size)
         ) for _ in range(self._num_rnn_layers)]
         self.dropout = tfl.Dropout(self.dropout_rate)

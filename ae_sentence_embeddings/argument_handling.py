@@ -4,7 +4,6 @@ The module also contains helper tools for argparse
 
 from __future__ import annotations
 from dataclasses import dataclass
-from os.path import isfile, isdir
 from typing import Mapping, Dict, Any, Union, Optional, Sequence, Callable, Literal
 from inspect import signature
 from logging import Logger
@@ -283,21 +282,19 @@ class DataSplitPathArgs(DeeplArgs):
     test_path: Optional[str] = None
 
 
-def is_correct_path(path_string: str, check_function: Callable[[str], bool]) -> str:
-    """Returned the passed argument if it is a valid path.
-    Otherwise, raise `ValueError`.
+def arg_checker(check_function: Callable[[str], bool]) -> Callable[[str], Union[str, int, float]]:
+    """A decorator to return a function that checks whether a command line argument is correct
 
     Args:
-        path_string: The string that is expected to represent a path
-        check_function: A function that checks whether `path_string` satisfies certain criteria
+        check_function: A function that checks whether its string input satisfies certain criteria
 
     Returns:
-        The value of `path_string` if it is a valid argument
+        A function that can be used as a `type` argument in `parser.add_argument()`
     """
-    if not check_function(path_string):
-        raise ValueError(f"Invalid command line argument: {path_string} is not a valid path.")
-    return path_string
 
+    def _check_arg(input_from_cl: str) -> Union[str, int, float]:
+        if not check_function(input_from_cl):
+            raise ValueError(f"Invalid command line argument: {input_from_cl}")
+        return input_from_cl
 
-is_file_path = partial(is_correct_path, check_function=isfile)
-is_dir_path = partial(is_correct_path, check_function=isdir)
+    return _check_arg

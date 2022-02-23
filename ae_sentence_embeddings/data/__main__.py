@@ -8,13 +8,13 @@ from transformers import BertTokenizer
 from tokenizers import Tokenizer
 
 from ae_sentence_embeddings.data import tokenize_hgf_dataset
-from ae_sentence_embeddings.argument_handling import is_file_path
+from ae_sentence_embeddings.argument_handling import arg_checker
 
 
 def get_tokenization_args() -> Namespace:
     """Get command line arguments"""
     parser = ArgumentParser(description="Get command line arguments for tokenization")
-    parser.add_argument("dataset_path", type=is_file_path,
+    parser.add_argument("dataset_path", type=arg_checker(isfile),
                         help="Path to the data to be tokenized in `sentence-per-line` or `jsonlines` format")
     parser.add_argument("tokenizer_output_path", help="Path to the output `.jsonl` dataset")
     parser.add_argument("--langs", choices=["mono", "multi"], default="mono",
