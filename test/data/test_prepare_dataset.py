@@ -185,5 +185,5 @@ class TFDatasetTest(tf.test.TestCase):
         self.assertAllEqual(expected_features, outputs[0], msg=f"Targets are:\n{outputs[0]}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

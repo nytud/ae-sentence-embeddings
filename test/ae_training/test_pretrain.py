@@ -19,6 +19,7 @@ class ArgProcessingTest(unittest.TestCase):
 
     def setUp(self) -> None:
         """Fixture setup. This creates a nested and a flat dictionary"""
+        super().setUp()
         self.nested_dict = {
             "data_split_path_args": {
                 "train_path": "train.jsonl",
@@ -78,5 +79,5 @@ class ArgProcessingTest(unittest.TestCase):
             self.assertIsInstance(train_arg_group, expected_type)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -62,5 +62,5 @@ class BilingLayerTest(tf.test.TestCase):
         self.assertAllEqual(pair2, self.pair2, msg=f"Tensors swapped!\n{pair2}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

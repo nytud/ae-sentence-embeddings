@@ -94,5 +94,5 @@ class DataTest(tf.test.TestCase):
             auto_encoding_data_point["attention_mask_en"], translation_data_point["attention_mask_hu"])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

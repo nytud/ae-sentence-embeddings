@@ -26,5 +26,5 @@ class PoolingTest(tf.test.TestCase):
         self.assertAllEqual(expected_output, layer_output)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

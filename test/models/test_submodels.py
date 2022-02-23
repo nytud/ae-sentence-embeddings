@@ -29,5 +29,5 @@ class SubmodelTest(tf.test.TestCase):
                             msg=f"The RNN output is of shape:\n{result.shape}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

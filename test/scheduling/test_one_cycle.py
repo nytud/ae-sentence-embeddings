@@ -47,5 +47,5 @@ class OneCycleTest(tf.test.TestCase):
                              msg=f"Returned values are:\n{step_vals}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

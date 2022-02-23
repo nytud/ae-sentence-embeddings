@@ -79,7 +79,7 @@ def make_dummy_bert_inputs(
 
 def read_json(file_path: str) -> Dict[str, Any]:
     """Read in a `json` configuration file"""
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, 'rb') as f:
         json_dict = json.load(f)
     return json_dict
 

@@ -49,5 +49,5 @@ def main() -> None:
     tokenized_dataset.to_json(args["tokenizer_output_path"], force_ascii=False)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

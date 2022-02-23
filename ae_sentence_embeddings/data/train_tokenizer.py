@@ -109,5 +109,5 @@ def train_tokenizer_main() -> None:
     tokenizer.save(args.save_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     train_tokenizer_main()

@@ -27,5 +27,5 @@ class ModelingToolTest(tf.test.TestCase):
                          msg=f"The resulting shape is {processed_attn_mask.shape}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

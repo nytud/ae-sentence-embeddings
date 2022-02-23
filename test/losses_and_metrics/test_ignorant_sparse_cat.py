@@ -26,5 +26,5 @@ class IgnorantSparseCatTest(tf.test.TestCase):
         self.assertShapeEqual(np.array(1.), loss_val, msg=f"Loss value is {loss_val}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

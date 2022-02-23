@@ -19,5 +19,5 @@ class RegularizationLossTest(tf.test.TestCase):
         self.assertShapeEqual(zero_dim_arr, latent_loss)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

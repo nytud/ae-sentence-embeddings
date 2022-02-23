@@ -9,7 +9,7 @@ setuptools.setup(
     version=__version__,
     author='nyekibence',
     author_email='nyeki.bence96@gmail.com',
-    description='A package for ae_training Transformer-based autoencoders',
+    description='A package for training Transformer-based autoencoders',
     long_description=long_description,
     long_description_content_type='text/markdown',
     packages=setuptools.find_packages(exclude=['test', 'examples']),

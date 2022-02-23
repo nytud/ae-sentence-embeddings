@@ -35,5 +35,5 @@ class AeTransformerTest(tf.test.TestCase):
         self.assertAllEqual(expected_shape, tf.shape(res), msg=f"The result is:\n{res}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()

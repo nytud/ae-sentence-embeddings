@@ -196,5 +196,5 @@ class BilingualVaeTest(tf.test.TestCase):
         self.assertAllEqual(pred0.shape, pred1.shape)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tf.test.main()
