@@ -1,7 +1,9 @@
-"""A module for functions that adapt inputs to layers"""
+"""A module for functions that adapt inputs to layers
+and other utils: logging, I/O handling, n-gram iteration"""
 
-from typing import Dict, List, Union, Any, Optional, Literal
+from typing import Dict, List, Tuple, Union, Any, Optional, Literal, Iterable, Iterator
 from argparse import ArgumentParser
+from itertools import tee, islice
 import json
 import logging
 
@@ -128,3 +130,20 @@ def get_custom_logger(
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     return logger
+
+
+def make_ngram_iter(it: Iterable, ngram_length: int, step_size: int = 1) -> Iterator[Tuple]:
+    """Create an n-gram iterator. This is similar to the implementation at
+    https://github.com/dlazesz/n-gram-benchmark/blob/master/ngram.py
+
+    Args:
+        it: Any iterable object. The n-grams will be created from its elements
+        ngram_length: Length of the n-grams; e.g. `ngram_length=2` means using bigrams.
+        step_size: Step size between the starting elements of the n-grams. It can be useful
+            if non-overlapping n-grams need to be created. For example, `ngram_length=2, step_size=2`
+            creates non-overlapping bigrams. Defaults to `1`
+
+    Returns:
+        An iterator of tuples where the tuples are n-grams
+    """
+    return zip(*(islice(tee_it, i, None, step_size) for i, tee_it in enumerate(tee(it, ngram_length))))
