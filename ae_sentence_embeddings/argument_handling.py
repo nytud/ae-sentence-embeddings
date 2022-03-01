@@ -9,6 +9,7 @@ from inspect import signature
 from logging import Logger
 import re
 from functools import partial
+from abc import ABCMeta
 
 from transformers import BertConfig, OpenAIGPTConfig
 
@@ -21,8 +22,14 @@ def _subst_func(word: str, pattern: re.Pattern, repl: str) -> str:
 camel_to_snake = partial(_subst_func, pattern=re.compile(r'(?<!^)([A-Z])'), repl=r'_\1')
 
 
-class DeeplArgs:
-    """Base class for ae_training arguments. Subclass it and add fields to use its methods"""
+class DeeplArgs(metaclass=ABCMeta):
+    """Base class for training arguments. Subclass it and add fields to use its methods"""
+
+    def __init__(self, **kwargs):
+        # Making `__init__` an `abstractmethod` would raise a `TypeError` if the child classes are
+        # `dataclasses` without an explicit `__init__` method, even though the `dataclass` decorator
+        # does add an `__init__` method to the class by default
+        raise NotImplementedError("Initialization must be implemented by children classes")
 
     @classmethod
     def collect_from_dict(cls, args_dict: Mapping[str, Any], prefix: str = "") -> DeeplArgs:
@@ -48,7 +55,7 @@ class DeeplArgs:
         return {k: v for k, v in self.__dict__.items()}
 
 
-@dataclass
+@dataclass  # Note that the `@dataclass` decorator does implement the `__init__` method
 class TokenizationArgs(DeeplArgs):
     """A dataclass for tokenization arguments
 

@@ -1,8 +1,9 @@
 """A module for defining Transformer-based AEs"""
 
-from typing import Tuple, Union, Optional, Literal, Callable, Dict, Any
+from typing import Tuple, Union, Optional, Literal, Dict, Any
 import pickle
 from warnings import warn
+from abc import ABCMeta, abstractmethod
 
 import tensorflow as tf
 from tensorflow.keras import Model as KModel, layers as tfl
@@ -20,7 +21,7 @@ from ae_sentence_embeddings.models import (
 )
 
 
-class BaseAe(KModel):
+class BaseAe(KModel, metaclass=ABCMeta):
     """Base class for Transformer AEs. Used for subclassing only"""
 
     def __init__(
@@ -84,6 +85,10 @@ class BaseAe(KModel):
                     optimizer_weights = pickle.load(f)
                 self.optimizer.set_weights(optimizer_weights)
 
+    @abstractmethod
+    def call(self, inputs, training=None):
+        return
+
     def get_config(self) -> Dict[str, Any]:
         base_config = super(BaseAe, self).get_config()
         return {
@@ -100,7 +105,7 @@ class BaseAe(KModel):
         return cls(encoder_config, decoder_config, **config)
 
 
-class BaseVae(BaseAe):
+class BaseVae(BaseAe, metaclass=ABCMeta):
     """Base class for Transformer-based VAE encoders. Use for subclassing only"""
 
     def __init__(self, enc_config: BertConfig, dec_config: Union[OpenAIGPTConfig, RnnArgs],

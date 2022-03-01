@@ -161,7 +161,7 @@ class SentVaeEncoder(SentAeEncoder):
         }
 
 
-@keras_serializable
+@keras_serializable  # Note that this decorator adds the `get_config` method
 class SentAeDecoder(KModel):
     """The full decoder part of the autoencoder"""
 

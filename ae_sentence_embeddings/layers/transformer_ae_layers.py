@@ -14,7 +14,7 @@ from ae_sentence_embeddings.argument_handling import PositionalEmbeddingArgs, Re
 from ae_sentence_embeddings.losses_and_metrics import kl_loss_func
 
 
-@keras_serializable
+@keras_serializable  # Note that this decorator adds the `get_config` method
 class AeTransformerEncoder(TFBertEncoder):
     """Make TFBertEncoder serializable"""
     config_class = BertConfig
