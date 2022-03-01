@@ -196,6 +196,8 @@ def swap_features(
         A data point with swapped target values
     """
     for feature_lang1, feature_lang2 in feature_col_pairs:
+        # Cyclic assignments: `example[feature_lang1]` and
+        # `example[feature_lang2]` are swapped below
         feature_lang1_value = example[feature_lang1]
         example[feature_lang1] = example[feature_lang2]
         example[feature_lang2] = feature_lang1_value

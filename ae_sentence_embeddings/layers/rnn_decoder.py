@@ -106,6 +106,7 @@ class AeGRUCellDecoder(tfl.Layer):
         self.layernorm_eps = layernorm_eps
         self.dropout_rate = dropout_rate
         self.rnn_layers = [tfl.GRUCell(self._hidden_size) for _ in range(self._num_rnn_layers)]
+        # `GRUCell` is mutable, `[tfl.GRUCell(...)] * self._num_rnn_layers` should NOT be used!
         self.dense_layers = [tfl.Dense(
             units=self._hidden_size,
             activation="tanh",

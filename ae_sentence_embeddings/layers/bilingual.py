@@ -20,7 +20,7 @@ class RandomSwapLayer(tfl.Layer):
             **kwargs: Parent class keyword arguments
         """
         super().__init__(**kwargs)
-        if p > 1 or p < 0:
+        if p < 0 or 1 < p:
             raise ValueError("`p` should be a floating point number in the interval `[0, 1]`")
         self.p = p
 
