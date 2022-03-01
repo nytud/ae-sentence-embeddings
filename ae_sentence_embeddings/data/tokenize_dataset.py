@@ -8,7 +8,7 @@ from transformers import BertTokenizer
 from tokenizers import Tokenizer
 from datasets import Dataset as HgfDataset
 
-from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
+from ae_sentence_embeddings.modeling_tools import make_decoder_inputs, make_ngram_iter
 
 
 def tokenize_hgf_dataset(
@@ -217,4 +217,4 @@ def _get_feature_pairs(
         ("attention_mask_en", "attention_mask_hu")]`
     """
     feature_cols = sorted([col for col in dataset_cols if not col.startswith(target_prefix)])
-    return [(feature_cols[i], feature_cols[i+1]) for i in range(0, len(feature_cols), 2)]
+    return list(make_ngram_iter(feature_cols, 2, 2))

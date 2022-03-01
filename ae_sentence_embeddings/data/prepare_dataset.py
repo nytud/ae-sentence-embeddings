@@ -9,6 +9,7 @@ from tensorflow.data import Dataset as TFDataset  # This is a correct import. Py
 from datasets import Dataset as HgfDataset, load_dataset
 
 from ae_sentence_embeddings.argument_handling import DataStreamArgs, DataSplitPathArgs
+from ae_sentence_embeddings.modeling_tools import make_ngram_iter
 
 MultiLingTensorStruct = Tuple[Tuple[tf.Tensor, ...], Tuple[tf.Tensor, ...]]
 
@@ -77,6 +78,7 @@ def pre_pad_multilingual(feature_tensors: Tuple[tf.Tensor, ...],
                                 mode="CONSTANT", constant_values=padding_value)
             new_tensors.append(new_tensor)
         outputs.append(tuple(new_tensors))
+    # The output type is correct, PyCharm may detect a mismatch between expected type and returned type
     return tuple(outputs)
 
 
@@ -149,12 +151,11 @@ def post_batch_multilingual(
     """
     outputs = []
     for tensor_tuple in (feature_tensors, target_tensors):
-        new_tensors = []
-        for i in range(0, len(tensor_tuple), 2):
-            new_tensor = tf.concat([tensor_tuple[i], tensor_tuple[i+1]], axis=0)
-            new_tensors.append(new_tensor)
-        new_tensors = new_tensors[0] if len(new_tensors) == 1 else tuple(new_tensors)
+        new_tensors = tuple(tf.concat([left, right], axis=0) for left, right in make_ngram_iter(tensor_tuple, 2, 2))
+        if len(new_tensors) == 1:
+            new_tensors = new_tensors[0]
         outputs.append(new_tensors)
+    # The output type is correct, PyCharm may detect a mismatch between expected type and returned type
     return tuple(outputs)
 
 
