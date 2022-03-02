@@ -1,6 +1,6 @@
 """A script for training a BPE tokenizer with the `tokenizers` library"""
 
-from typing import Iterable, Optional, Union
+from typing import Iterable, Optional
 from argparse import Namespace, ArgumentParser
 from os.path import isfile
 
@@ -10,15 +10,11 @@ from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.processors import TemplateProcessing
 
-from ae_sentence_embeddings.argument_handling import arg_checker
-
-
-@arg_checker
-def is_positive(x: Union[str, int, float]) -> bool:
-    """Check if an integer is positive"""
-    if not isinstance(x, int):
-        x = int(x)
-    return x > 0
+from ae_sentence_embeddings.argument_handling import (
+    arg_checker,
+    check_if_positive,
+    check_if_output_path
+)
 
 
 def get_tokenizer_training_args() -> Namespace:
@@ -26,10 +22,11 @@ def get_tokenizer_training_args() -> Namespace:
     parser = ArgumentParser(description="Arguments for training a BPE tokenizer from scratch")
     parser.add_argument("training_file", type=arg_checker(isfile),
                         help="Path to the plain text training corpus")
-    parser.add_argument("save_path", help="Path to a `.json` file where the trained tokenizer will be saved")
-    parser.add_argument("--vocab-size", dest="vocab_size", default=30000, type=is_positive,
+    parser.add_argument("save_path", type=check_if_output_path,
+                        help="Path to a `.json` file where the trained tokenizer will be saved")
+    parser.add_argument("--vocab-size", dest="vocab_size", default=30000, type=check_if_positive,
                         help="Required vocabulary size. Defaults to 30000")
-    parser.add_argument("--max-length", dest="max_length", type=is_positive,
+    parser.add_argument("--max-length", dest="max_length", type=check_if_positive,
                         help="Optional. Maximal sequence length to which longer sequences will be truncated. "
                              "If not specified, truncation will not be used")
     parser.add_argument("--unk-token", dest="unk_token", default="[UNK]", type=arg_checker(lambda x: len(x) > 0),
@@ -79,10 +76,11 @@ def train_bpe(
     if special_tokens[0] != unk_token:
         special_tokens.insert(0, unk_token)
     trainer = BpeTrainer(special_tokens=special_tokens, vocab_size=vocab_size, **kwargs)
-    tokenizer.pre_tokenizer = Whitespace()
+    tokenizer.pre_tokenizer = Whitespace()  # This is correct, PyCharm may complain about trying to set a property
     tokenizer.train(files, trainer)
     if use_cls_sep_template:
         cls_token, sep_token = special_tokens[1:3]
+        # The next line is also correct, no problem caused by setting a property
         tokenizer.post_processor = TemplateProcessing(
             single=f"{cls_token} $A {sep_token}",
             pair=f"{cls_token} $A {sep_token} $B:1 {sep_token}:1",

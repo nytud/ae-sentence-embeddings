@@ -1,5 +1,6 @@
 """A module for tokenizing a saving a raw text dataset"""
 
+from os.path import isfile
 from typing import Iterable, Dict, Any, Mapping, Tuple, Union, List
 from functools import partial
 
@@ -9,6 +10,24 @@ from tokenizers import Tokenizer
 from datasets import Dataset as HgfDataset
 
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs, make_ngram_iter
+
+
+def load_tokenizer(tokenizer_path: str) -> Union[BertTokenizer, Tokenizer]:
+    """Load a pre-trained tokenizer which can be either a `BertTokenizer`
+    or a custom `tokenizers.Tokenizer`
+
+    Args:
+        tokenizer_path: Tokenizer name or path. This can be a path to a file,
+            a directory or the name of a tokenizer downloadable from the Hugging Face Hub
+
+    Returns:
+         The loaded tokenizer
+    """
+    if isfile(tokenizer_path):
+        tokenizer = Tokenizer.from_file(tokenizer_path)
+    else:
+        tokenizer = BertTokenizer.from_pretrained(tokenizer_path)
+    return tokenizer
 
 
 def tokenize_hgf_dataset(

@@ -10,6 +10,7 @@ from logging import Logger
 import re
 from functools import partial
 from abc import ABCMeta
+from pathlib import Path
 
 from transformers import BertConfig, OpenAIGPTConfig
 
@@ -305,3 +306,17 @@ def arg_checker(check_function: Callable[[str], bool]) -> Callable[[str], Union[
         return input_from_cl
 
     return _check_arg
+
+
+@arg_checker
+def check_if_positive(x: Union[str, int, float]) -> bool:
+    """Check if an integer is positive"""
+    if not isinstance(x, int):
+        x = int(x)
+    return x > 0
+
+
+@arg_checker
+def check_if_output_path(output_path: str) -> bool:
+    """Check if `output_path` is correct"""
+    return Path(output_path).parent.is_dir()
