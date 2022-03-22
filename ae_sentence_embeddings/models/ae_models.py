@@ -1,5 +1,8 @@
 """A module for defining Transformer-based AEs"""
 
+# Note that does not often recognize whether that Keras layer or model is callable.
+# This is the reason why the corresponding inspection were suppressed for some functions and classes.
+
 from typing import Tuple, Union, Optional, Literal, Dict, Any
 import pickle
 from warnings import warn
@@ -140,6 +143,7 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
         }
 
 
+# noinspection PyCallingNonCallable
 class TransformerAe(BaseAe):
     """A Transformer-based AE"""
 
@@ -174,6 +178,7 @@ class TransformerAe(BaseAe):
         return logits
 
 
+# noinspection PyCallingNonCallable
 class TransformerVae(BaseVae):
     """A Transformer-based VAE"""
 
@@ -210,6 +215,7 @@ class TransformerVae(BaseVae):
         return logits
 
 
+# noinspection PyCallingNonCallable
 class BertRnnVae(BaseVae):
     """A VAE with a Bert encoder and an RNN decoder"""
 
@@ -237,6 +243,7 @@ class BertRnnVae(BaseVae):
         return logits
 
 
+# noinspection PyCallingNonCallable
 class BertBiRnnVae(BaseVae):
     """A Transformer-RNN VAE for bilingual training"""
 

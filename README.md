@@ -5,11 +5,11 @@ A package for implementing sentence encoders with an autoencoder architecture us
 
 ## Installation
 
+With [Poetry](https://python-poetry.org/):
 ```bash
 git clone https://github.com/nyekibence/ae-sentence-embeddings.git
 cd ae-sentence-embeddings
-pip install -r requirements.txt
-pip install -e .
+poetry install && python3 setup.py develop
 ```
 
 In order to run on GPU, please refer to the [TensorFlow documentation](https://www.tensorflow.org/install/gpu).

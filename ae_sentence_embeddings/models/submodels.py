@@ -2,6 +2,9 @@
 Defining them as a model allows to use them separately after pre-training
 """
 
+# Note that does not often recognize whether that Keras layer or model is callable.
+# This is the reason why the corresponding inspection were suppressed for some functions and classes.
+
 from typing import Tuple, Sequence, Optional, Literal, Dict, Any
 
 import tensorflow as tf
@@ -52,6 +55,7 @@ class SentAeEncoder(KModel):
             PositionalEmbeddingArgs.collect_from_dict(config.to_dict()))
         self.transformer_encoder = AeTransformerEncoder(self.config)
 
+    # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> Tuple[tf.Tensor, Sequence[tf.Tensor]]:
         """Call the encoder
@@ -142,6 +146,7 @@ class SentVaeEncoder(SentAeEncoder):
             Two pooled tensors (mean and log variance for VAE sampling) and the Transformer encoder outputs
         """
         pooling_output, encoder_outputs = super().call(inputs, training=training)
+        # noinspection PyCallingNonCallable
         post_pooling_mean, post_pooling_logvar = self.post_pooling(pooling_output)
         return post_pooling_mean, post_pooling_logvar, encoder_outputs
 
@@ -189,6 +194,7 @@ class SentAeDecoder(KModel):
         self.out_dense = tfl.Dense(config.vocab_size,
                                    kernel_initializer=TruncatedNormal(stddev=config.initializer_range))
 
+    # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> tf.Tensor:
         """Call the decoder
@@ -241,6 +247,7 @@ class SentAeGRUDecoder(KModel):
         self.out_dense = tfl.Dense(config.vocab_size,
                                    kernel_initializer=TruncatedNormal(stddev=config.initializer_dev))
 
+    # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> tf.Tensor:
         """Call the decoder
@@ -272,6 +279,7 @@ class SentAeGRUDecoder(KModel):
         return cls(decoder_config)
 
 
+# noinspection PyCallingNonCallable
 def ae_double_gru(rnn_config: RnnArgs) -> KModel:
     """Define parallel decoders with the functional API
 

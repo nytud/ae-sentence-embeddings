@@ -1,22 +1,45 @@
-import setuptools
-from ae_sentence_embeddings.version import __version__
+# -*- coding: utf-8 -*-
 
-with open('README.md') as long_desc_file:
-    long_description = long_desc_file.read()
+from setuptools import setup
 
-setuptools.setup(
-    name='ae_sentence_embeddings',
-    version=__version__,
-    author='nyekibence',
-    author_email='nyeki.bence96@gmail.com',
-    description='A package for training Transformer-based autoencoders',
-    long_description=long_description,
-    long_description_content_type='text/markdown',
-    packages=setuptools.find_packages(exclude=['test', 'examples']),
-    classifiers=[
-        'Programming Language :: Python :: 3',
-        'License :: OSI Approved :: MIT License',
-        'Operating System :: POSIX :: Linux',
-    ],
-    python_requires='>=3.9',
-)
+with open("README.md", "r", encoding="utf-8") as readme_file:
+    long_description = readme_file.read()
+
+packages = \
+["ae_sentence_embeddings",
+ "ae_sentence_embeddings.ae_training",
+ "ae_sentence_embeddings.callbacks",
+ "ae_sentence_embeddings.data",
+ "ae_sentence_embeddings.layers",
+ "ae_sentence_embeddings.losses_and_metrics",
+ "ae_sentence_embeddings.models",
+ "ae_sentence_embeddings.scheduling"]
+
+package_data = \
+{"": ["*"]}
+
+install_requires = \
+["datasets>=2.0.0,<3.0.0",
+ "tensorflow-addons>=0.16.1,<0.17.0",
+ "tensorflow>=2.8.0,<3.0.0",
+ "transformers>=4.17.0,<5.0.0",
+ "wandb>=0.12.11,<0.13.0"]
+
+setup_kwargs = {
+    "name": "ae-sentence-embeddings",
+    "version": "0.0.1",
+    "description": "A package for training Transformer-based autoencoders",
+    "long_description": long_description,
+    "author": "Nyéki Bence",
+    "author_email": "nyeki.bence96@gmail.com",
+    "maintainer": None,
+    "maintainer_email": None,
+    "url": "https://github.com/nyekibence/ae-sentence-embeddings",
+    "packages": packages,
+    "package_data": package_data,
+    "install_requires": install_requires,
+    "python_requires": ">=3.10,<3.11",
+}
+
+
+setup(**setup_kwargs)
