@@ -74,11 +74,11 @@ class TFDatasetTest(tf.test.TestCase):
         )
 
     @property
-    def mono_data(self) -> MappingProxyType[str, Any]:
+    def mono_data(self) -> MappingProxyType:
         return self._mono_data
 
     @property
-    def bi_data(self) -> MappingProxyType[str, Any]:
+    def bi_data(self) -> MappingProxyType:
         return self._bi_data
 
     @property
