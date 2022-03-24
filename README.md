@@ -13,6 +13,9 @@ poetry install && python3 setup.py develop
 ```
 
 In order to run on GPU, please refer to the [TensorFlow documentation](https://www.tensorflow.org/install/gpu).
+Alternatively, you can build a docker image using `Dockerfile` that installs
+the necessary dependencies to run on GPU as well as the `ae_sentence_embeddings` Python library.
+The image is based on a `TensorFlow Docker` image, see the [guide](https://www.tensorflow.org/install/docker) for more detailed information. 
 
 
 ## Train a tokenizer
