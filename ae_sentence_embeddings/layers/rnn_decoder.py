@@ -59,7 +59,7 @@ class AeGRUDecoder(tfl.Layer):
 
         Args:
             inputs: A tuple of two tensors: the initial hidden state tensor of size `(batch_size, hidden_size)` and
-                    an embedded input tensor of shape `(batch_size, sequence_length, hidden_size)`
+                an embedded input tensor of shape `(batch_size, sequence_length, hidden_size)`
             training: Specify whether the layer is being used in training mode
 
         Returns:
@@ -239,24 +239,22 @@ class AeTransformerGRUDecoder(tfl.Layer):
     # noinspection PyCallingNonCallable
     def call(
             self,
-            inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+            inputs: Tuple[tf.Tensor, tf.Tensor],
             training: Optional[bool] = None
     ) -> tf.Tensor:
         """Call the layer
 
         Args:
-            inputs: The following tensors:
-                a sentence embedding tensor of shape `(batch_size, gru_hidden_size)`;
-                an embedding tensor of shape `(batch_size, sequence_length, transformer_hidden_size)`;
-                an extended attention mask tensor of shape `(batch_size, 1, 1, sequence_length)` with
-                    values 0. and -10000.;
+            inputs: A sentence embedding tensor of shape `(batch_size, gru_hidden_size)` and
+                an embedding tensor of shape `(batch_size, sequence_length, transformer_hidden_size)`.
+                Note that no attention mask is required because the transformer layers perform causal masking.
             training: specifies whether the model is being used in training mode
 
         Returns:
             A tensor of shape `(batch_size, sequence_length, gru_hidden_size)`
         """
-        sent_embeddings, tok_embeddings, attn_mask = inputs
-        tok_embeddings = self._transformer((tok_embeddings, attn_mask), training=training)
+        sent_embeddings, tok_embeddings = inputs
+        tok_embeddings = self._transformer((tok_embeddings, None), training=training)
         for dense_layer in self._transformer2gru:
             tok_embeddings = dense_layer(tok_embeddings)
         tok_embeddings = self._intermediate_layernorm(

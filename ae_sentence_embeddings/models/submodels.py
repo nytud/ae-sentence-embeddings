@@ -282,6 +282,45 @@ class SentAeGRUDecoder(KModel):
         return cls(decoder_config)
 
 
+def parallel_decoders(
+        sent_hidden_size: int,
+        tok_hidden_size: int,
+        vocab_size: int,
+        linear_stddev: float,
+        decoder_class: type,
+        decoder_kwargs: Dict[str, Any],
+        name: Optional[str] = None,
+) -> KModel:
+    """Define parallel decoders with the functional API
+
+    Args:
+        sent_hidden_size: Hidden size of the input sentence representations.
+        tok_hidden_size: Hidden size of the input token representations.
+        vocab_size: Vocabulary size for the output logits.
+        linear_stddev: `TruncatedNormal` stddev argument of the final dense layer that outputs logits.
+        decoder_class: Decoder class to use.
+        name: Optional. Model name as a string.
+        decoder_kwargs: Keyword arguments to initialize the decoder instances
+
+    Returns:
+        A functional Keras model
+    """
+    sent_embeddings1 = tfl.Input(shape=(sent_hidden_size,), dtype=tf.float32)
+    token_embeddings1 = tfl.Input(shape=(None, tok_hidden_size), dtype=tf.float32)
+    sent_embeddings2 = tfl.Input(shape=(sent_hidden_size,), dtype=tf.float32)
+    token_embeddings2 = tfl.Input(shape=(None, tok_hidden_size), dtype=tf.float32)
+
+    branch1_out = decoder_class(**decoder_kwargs)((sent_embeddings1, token_embeddings1))
+    branch2_out = decoder_class(**decoder_kwargs)((sent_embeddings2, token_embeddings2))
+    outputs = tfl.concatenate([branch1_out, branch2_out], axis=0)
+    outputs = tfl.Dense(
+        vocab_size,
+        kernel_initializer=TruncatedNormal(stddev=linear_stddev),
+    )(outputs)
+    return KModel(inputs=[sent_embeddings1, token_embeddings1, sent_embeddings2, token_embeddings2],
+                  outputs=outputs, name=name)
+
+
 # noinspection PyCallingNonCallable
 def ae_double_gru(rnn_config: RnnArgs) -> KModel:
     """Define parallel decoders with the functional API
@@ -292,32 +331,20 @@ def ae_double_gru(rnn_config: RnnArgs) -> KModel:
     Returns:
         A functional Keras model
     """
-    hidden_size = rnn_config.hidden_size
-    sent_embeddings1 = tfl.Input(shape=(hidden_size,), dtype=tf.float32)
-    token_embeddings1 = tfl.Input(shape=(None, hidden_size), dtype=tf.float32)
-    sent_embeddings2 = tfl.Input(shape=(hidden_size,), dtype=tf.float32)
-    token_embeddings2 = tfl.Input(shape=(None, hidden_size), dtype=tf.float32)
-
-    branch1_out = AeGRUDecoder(
-        num_rnn_layers=rnn_config.num_rnn_layers,
-        hidden_size=rnn_config.hidden_size,
-        layernorm_eps=rnn_config.layernorm_eps,
-        dropout_rate=rnn_config.dropout_rate
-    )((sent_embeddings1, token_embeddings1))
-    branch2_out = AeGRUDecoder(
-        num_rnn_layers=rnn_config.num_rnn_layers,
-        hidden_size=rnn_config.hidden_size,
-        layernorm_eps=rnn_config.layernorm_eps,
-        dropout_rate=rnn_config.dropout_rate
-    )((sent_embeddings2, token_embeddings2))
-
-    outputs = tfl.concatenate([branch1_out, branch2_out], axis=0)
-    outputs = tfl.Dense(
-        rnn_config.vocab_size,
-        kernel_initializer=TruncatedNormal(stddev=rnn_config.initializer_dev),
-    )(outputs)
-    return KModel(inputs=[sent_embeddings1, token_embeddings1, sent_embeddings2, token_embeddings2],
-                  outputs=outputs, name="double_gru")
+    return parallel_decoders(
+        sent_hidden_size=rnn_config.hidden_size,
+        tok_hidden_size=rnn_config.hidden_size,
+        vocab_size=rnn_config.vocab_size,
+        linear_stddev=rnn_config.initializer_dev,
+        decoder_class=AeGRUDecoder,
+        name="double_gru",
+        decoder_kwargs={
+            "num_rnn_layers": rnn_config.num_rnn_layers,
+            "hidden_size": rnn_config.hidden_size,
+            "layernorm_eps": rnn_config.layernorm_eps,
+            "dropout_rate": rnn_config.dropout_rate
+        }
+    )
 
 
 # noinspection PyCallingNonCallable
@@ -336,45 +363,16 @@ def ae_double_transformer_gru(
     Returns:
         A functional Keras model
     """
-    hidden_size = transformer_layers_config.n_embd
-    sent_embeddings1 = tfl.Input(shape=(hidden_size,), dtype=tf.float32)
-    token_embeddings1 = tfl.Input(shape=(None, hidden_size), dtype=tf.float32)
-    attn_mask1 = tfl.Input(shape=(None,), dtype=tf.int32)
-    sent_embeddings2 = tfl.Input(shape=(hidden_size,), dtype=tf.float32)
-    token_embeddings2 = tfl.Input(shape=(None, hidden_size), dtype=tf.float32)
-    attn_mask2 = tfl.Input(shape=(None,), dtype=tf.int32)
-    attn_mask1 = process_attention_mask(
-        attention_mask=make_decoder_inputs(attn_mask1),
-        embedding_dtype=token_embeddings2.dtype
+    return parallel_decoders(
+        sent_hidden_size=rnn_layers_config.hidden_size,
+        tok_hidden_size=transformer_layers_config.n_embd,
+        vocab_size=transformer_layers_config.vocab_size,
+        linear_stddev=transformer_layers_config.initializer_range,
+        decoder_class=AeTransformerGRUDecoder,
+        name="double_transformer_gru",
+        decoder_kwargs={
+            "transformer_config": transformer_layers_config,
+            "gru_config": rnn_layers_config,
+            "num_transformer2gru": num_transformer2gru
+        }
     )
-    attn_mask2 = process_attention_mask(
-        attention_mask=make_decoder_inputs(attn_mask2),
-        embedding_dtype=token_embeddings2.dtype
-    )
-
-    branch1_out = AeTransformerGRUDecoder(
-        transformer_config=transformer_layers_config,
-        gru_config=rnn_layers_config,
-        num_transformer2gru=num_transformer2gru
-    )((sent_embeddings1, token_embeddings1, attn_mask1))
-    branch2_out = AeTransformerGRUDecoder(
-        transformer_config=transformer_layers_config,
-        gru_config=rnn_layers_config,
-        num_transformer2gru=num_transformer2gru
-    )((sent_embeddings2, token_embeddings2, attn_mask2))
-
-    outputs = tfl.concatenate([branch1_out, branch2_out], axis=0)
-    outputs = tfl.Dense(
-        transformer_layers_config.vocab_size,
-        kernel_initializer=TruncatedNormal(
-            stddev=transformer_layers_config.initializer_range),
-    )(outputs)
-    inputs = [
-        sent_embeddings1,
-        token_embeddings1,
-        attn_mask1,
-        sent_embeddings2,
-        token_embeddings2,
-        attn_mask2
-    ]
-    return KModel(inputs=inputs, outputs=outputs, name="double_transformer_gru")

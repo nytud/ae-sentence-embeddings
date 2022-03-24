@@ -36,11 +36,16 @@ class AeTransformerDecoder(tfl.Layer):
         super().__init__(**kwargs)
         self.hidden = [TFBlock(config, scale=True, name=f"decoder_hidden_._{i}") for i in range(config.n_layer)]
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
+    def call(
+            self,
+            inputs: Tuple[tf.Tensor, Optional[tf.Tensor]],
+            training: Optional[bool] = None
+    ) -> tf.Tensor:
         """Call the layer. Itt will not be able to output attentions or use head masks
 
         Args:
-            inputs: Two tensors, the input hidden state and the attention mask
+            inputs: Two tensors, the input hidden state and the attention mask.
+                The latter can be `None`, which makes sense as the decoder performs causal attention masking
             training: Specifies whether the model is being used in training mode
 
         Returns:
