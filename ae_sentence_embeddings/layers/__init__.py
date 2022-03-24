@@ -7,5 +7,5 @@ from .transformer_ae_layers import (
     SinusoidalEmbedding
 )
 from .pooling import AveragePoolingLayer, CLSPlusSEPPooling
-from .rnn_decoder import AeGruDecoder, AeGRUCellDecoder
+from .rnn_decoder import AeGRUDecoder, AeGRUCellDecoder, AeTransformerGRUDecoder
 from .bilingual import RandomSwapLayer

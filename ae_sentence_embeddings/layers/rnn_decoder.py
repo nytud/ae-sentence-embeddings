@@ -1,12 +1,24 @@
-"""A module for RNN decoder layers as an alternative of a GPT decoder"""
+"""A module for RNN decoder layers as an alternative of a GPT decoder
+This module also contains the complex `AeTransformerGRUDecoder` layer
+that combines Transformer and GRU layers
+"""
 
+from __future__ import annotations
 from typing import Tuple, Dict, Any, Optional
+from copy import deepcopy
+from types import MappingProxyType
 
 import tensorflow as tf
 from tensorflow.keras import layers as tfl
+from tensorflow.keras.initializers import TruncatedNormal
+from tensorflow.keras.activations import serialize as act_serialize
+from transformers import OpenAIGPTConfig
+
+from ae_sentence_embeddings.layers.transformer_ae_layers import AeTransformerDecoder
+from ae_sentence_embeddings.argument_handling import RnnLayerArgs
 
 
-class AeGruDecoder(tfl.Layer):
+class AeGRUDecoder(tfl.Layer):
     """A GRU-based decoder"""
 
     def __init__(
@@ -15,8 +27,9 @@ class AeGruDecoder(tfl.Layer):
             hidden_size: int = 768,
             layernorm_eps: float = 1e-12,
             dropout_rate: float = 0.1,
-            **kwargs) -> None:
-        """
+            **kwargs
+    ) -> None:
+        """Initialize the GRU decoder
 
         Args:
             num_rnn_layers: Number of RNN layers. Defaults to 2
@@ -181,3 +194,112 @@ class AeGRUCellDecoder(tfl.Layer):
             "layernorm_eps": self.layernorm_eps,
             "dropout_rate": self.dropout_rate
         }
+
+
+class AeTransformerGRUDecoder(tfl.Layer):
+    """A Transformer + GRU decoder"""
+
+    def __init__(
+            self,
+            transformer_config: OpenAIGPTConfig,
+            gru_config: RnnLayerArgs,
+            num_transformer2gru: int = 2,
+            **kwargs
+    ) -> None:
+        """Initialize the layer
+
+        Args:
+            transformer_config: Transformer configuration arguments passed to `AeTransformerGRUDecoder`
+            gru_config: GRU configuration arguments passed to `AeGRUDecoder`
+            num_transformer2gru: Number of dense layers between the Transformer and
+                the GRU. Defaults to `2`
+            **kwargs: Parent class keyword arguments
+        """
+        if not isinstance(num_transformer2gru, int) or num_transformer2gru <= 0:
+            raise ValueError(
+                f"Argument `num_transformer2gru` must be a positive integer, got {num_transformer2gru}")
+        super().__init__(**kwargs)
+        self._transformer_config = deepcopy(transformer_config)
+        self._gru_config = deepcopy(gru_config)
+        self._num_transformer2gru = num_transformer2gru
+        self._transformer = AeTransformerDecoder(self._transformer_config)
+        self._gru = AeGRUDecoder(**gru_config.to_dict())
+        self._transformer2gru = [
+            tfl.Dense(
+                self._gru_config.hidden_size,
+                kernel_initializer=TruncatedNormal(stddev=self._transformer_config.initializer_range),
+                activation=self._transformer_config.afn,
+                name=f"transformer2gru_dense_{i}"
+            ) for i in range(num_transformer2gru)
+        ]
+        self._intermediate_layernorm = tfl.LayerNormalization(
+            epsilon=self._transformer_config.layer_norm_epsilon)
+        self._intermediate_dropout = tfl.Dropout(self._transformer_config.resid_pdrop)
+
+    # noinspection PyCallingNonCallable
+    def call(
+            self,
+            inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+            training: Optional[bool] = None
+    ) -> tf.Tensor:
+        """Call the layer
+
+        Args:
+            inputs: The following tensors:
+                a sentence embedding tensor of shape `(batch_size, gru_hidden_size)`;
+                an embedding tensor of shape `(batch_size, sequence_length, transformer_hidden_size)`;
+                an extended attention mask tensor of shape `(batch_size, 1, 1, sequence_length)` with
+                    values 0. and -10000.;
+            training: specifies whether the model is being used in training mode
+
+        Returns:
+            A tensor of shape `(batch_size, sequence_length, gru_hidden_size)`
+        """
+        sent_embeddings, tok_embeddings, attn_mask = inputs
+        tok_embeddings = self._transformer((tok_embeddings, attn_mask), training=training)
+        for dense_layer in self._transformer2gru:
+            tok_embeddings = dense_layer(tok_embeddings)
+        tok_embeddings = self._intermediate_layernorm(
+            self._intermediate_dropout(tok_embeddings, training=training))
+        return self._gru((sent_embeddings, tok_embeddings))
+
+    def get_config(self) -> Dict[str, Any]:
+        """Get config for Keras serialization"""
+        base_config = super().get_config()
+        return {
+            **base_config,
+            "transformer_config_dict": self._transformer_config.to_dict(),
+            "gru_config_dict": self._gru_config.to_dict(),
+            "num_transformer2gru": self._num_transformer2gru
+        }
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]) -> AeTransformerGRUDecoder:
+        """Initialize the object from a config dict"""
+        config = deepcopy(config)
+        transformer_config = OpenAIGPTConfig(**config.pop("transformer_config_dict"))
+        gru_config = RnnLayerArgs(**config.pop("gru_config_dict"))
+        return cls(transformer_config, gru_config, **config)
+
+    @property
+    def transformer_config(self) -> MappingProxyType:
+        return MappingProxyType(self._transformer_config.to_dict())
+
+    @property
+    def gru_config(self) -> MappingProxyType:
+        return MappingProxyType(self._gru_config.to_dict())
+
+    @property
+    def intermediate_mapping_config(self) -> MappingProxyType:
+        """Get info on the dense layers between the transformer and the GRU"""
+        return MappingProxyType({
+            "num_layers": self._num_transformer2gru,
+            "dropout_rate": self._intermediate_dropout.rate,
+            "layernorm_eps": self._intermediate_layernorm.epsilon,
+            "initializer_dev": self._transformer2gru[0].kernel_initializer.stddev,
+            "activation": act_serialize(self._transformer2gru[0].activation)
+        })
+
+    @property
+    def num_transformer2gru(self) -> int:
+        return self._num_transformer2gru

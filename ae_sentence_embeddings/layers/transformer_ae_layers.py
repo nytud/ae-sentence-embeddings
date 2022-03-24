@@ -48,6 +48,7 @@ class AeTransformerDecoder(tfl.Layer):
         """
         hidden_state, attn_mask = inputs
         for transformer_block in self.hidden:
+            # noinspection PyCallingNonCallable
             hidden_state = transformer_block(hidden_state, attn_mask, head_mask=None,
                                              output_attentions=False, training=training)[0]
         return hidden_state
@@ -58,9 +59,11 @@ class VaeSampling(tfl.Layer):
     \"Hands-on Machine Learning with Scikit-Learn, Keras, and TensorFlow\" (second edition, 2019), p. 588
     """
 
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], *args, **kwargs) -> tf.Tensor:
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
         """Sample from a Gaussian"""
         mean, log_var = inputs
+        # Output type is correct below
+        # noinspection PyTypeChecker
         return keras_backend.random_normal(tf.shape(log_var)) * keras_backend.exp(log_var / 2) + mean
 
 

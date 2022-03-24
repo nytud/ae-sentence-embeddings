@@ -215,29 +215,60 @@ class TransformerConfigs(DeeplArgs):
 
 
 @dataclass
-class RnnArgs(DeeplArgs):
-    """A dataclass for RNN decoder arguments
-
+class RnnLayerArgs(DeeplArgs):
+    """A dataclass for basic RNN arguments
+    This can be useful when arguments need to be passed to a Transformer + RNN decoder
     Fields:
         num_rnn_layers: Number of layers in a deep RNN. Defaults to 2
         hidden_size: RNN hidden size. Defaults to 768
-        vocab_size: Number of elements in the vocabulary. Defaults to 32001
-        initializer_dev: Stddev in the `TruncatedNormal` initializer for the embedding layer.
-            Defaults to 0.02
         layernorm_eps: Epsilon parameter for layer normalization. Defaults to 1e-12
         dropout_rate: A dropout rate between 0 and 1. Defaults to 0.1
     """
     num_rnn_layers: int = 2
     hidden_size: int = 768
-    vocab_size: int = 32001
-    initializer_dev: float = 0.02
     layernorm_eps: float = 1e-12
     dropout_rate: float = 0.1
 
     def __post_init__(self) -> None:
         """Check argument values"""
+        if self.num_rnn_layers <= 0:
+            raise ValueError(
+                f"The number of RNN layers must be positive, got {self.num_rnn_layers}")
+        if self.hidden_size <= 0:
+            raise ValueError(
+                f"The hidden size must be positive, got {self.hidden_size}")
+        if self.layernorm_eps <= 0:
+            raise ValueError(
+                f"The layer normalization epsilon must be positive, got {self.layernorm_eps}")
         if self.dropout_rate > 1 or self.dropout_rate < 0:
-            raise ValueError("The dropout rate should be between 0 and 1")
+            raise ValueError(
+                f"The dropout rate should be between 0 and 1, got {self.dropout_rate}")
+
+
+@dataclass
+class RnnArgs(RnnLayerArgs):
+    """A dataclass for RNN decoder arguments
+
+    Fields:
+        num_rnn_layers: Number of layers in a deep RNN. Defaults to 2
+        hidden_size: RNN hidden size. Defaults to 768
+        layernorm_eps: Epsilon parameter for layer normalization. Defaults to 1e-12
+        dropout_rate: A dropout rate between 0 and 1. Defaults to 0.1
+        vocab_size: Number of elements in the vocabulary. Defaults to 32001
+        initializer_dev: Stddev in the `TruncatedNormal` initializer for the embedding layer.
+            Defaults to 0.02
+    """
+    vocab_size: int = 32001
+    initializer_dev: float = 0.02
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.vocab_size <= 0:
+            raise ValueError(
+                f"The vocabulary size must be positive, got {self.vocab_size}")
+        if self.initializer_dev <= 0:
+            raise ValueError(
+                f"The initializer stddev must be positive, got {self.initializer_dev}")
 
 
 @dataclass

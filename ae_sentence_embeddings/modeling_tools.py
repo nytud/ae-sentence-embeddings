@@ -20,8 +20,8 @@ def process_attention_mask(
 
     Args:
         attention_mask: A 2D tensor with shape `(batch_size, sequence_length)` that contains attention mask.
-                        Possible values of an attention mask are `1` and `0`, where `0` stands for token mask
-                        and `1` means no mask.
+            Possible values of an attention mask are `1` and `0`, where `0` stands for token mask
+            and `1` means no mask.
         embedding_dtype: Expected datatype of the tensors returned by an embedding layer. Defaults to `float32`
 
     Returns:
