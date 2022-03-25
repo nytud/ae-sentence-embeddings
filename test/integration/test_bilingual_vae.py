@@ -6,19 +6,32 @@ from typing import Tuple
 from os import environ, mkdir, listdir
 from os.path import exists, isfile, join as os_path_join
 from shutil import rmtree
+from dataclasses import dataclass
 
 import tensorflow as tf
 import numpy as np
 from tensorflow_addons.optimizers import AdamW
-from transformers.models.bert.configuration_bert import BertConfig
+from transformers import BertConfig, OpenAIGPTConfig
 
 from ae_sentence_embeddings.modeling_tools import get_custom_logger
-from ae_sentence_embeddings.argument_handling import RnnArgs, OneCycleArgs, SaveAndLogArgs
+from ae_sentence_embeddings.argument_handling import RnnLayerArgs, OneCycleArgs, SaveAndLogArgs
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
 from ae_sentence_embeddings.models import BertBiRnnVae
 from ae_sentence_embeddings.callbacks import basic_checkpoint_and_log, OneCycleScheduler, DevEvaluator
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs
 from ae_sentence_embeddings.data import post_batch_feature_pair
+
+
+@dataclass
+class TrainingConf:
+    """A data class for training configuration objects"""
+    num_epochs: int
+    bert_config: BertConfig
+    gpt_config: OpenAIGPTConfig
+    rnn_config: RnnLayerArgs
+    num_transformer2gru: int
+    lr_args: OneCycleArgs
+    momentum_args: OneCycleArgs
 
 
 def _get_dummy_data(
@@ -108,18 +121,25 @@ class BilingualVaeTest(tf.test.TestCase):
             rmtree(cls.save_root_dir)
         super().tearDownClass()
 
-    def _configure_training(self) -> Tuple[int, BertConfig, RnnArgs, OneCycleArgs, OneCycleArgs]:
+    def _configure_training(self) -> TrainingConf:
         """Get configuration objects for training"""
+        transformer_hidden_size = 64
+        transformer_num_head = 2
         bert_config = BertConfig(
             vocab_size=self.vocab_size,
             num_hidden_layers=2,
-            hidden_size=64,
+            hidden_size=transformer_hidden_size,
             intermediate_size=256,
-            num_attention_heads=2,
+            num_attention_heads=transformer_num_head,
             max_position_embeddings=self.max_sequence_length
         )
-        rnn_config = RnnArgs(
+        gpt_config = OpenAIGPTConfig(
             vocab_size=self.vocab_size,
+            n_embd=transformer_hidden_size,
+            n_layer=1,
+            n_head=transformer_num_head
+        )
+        rnn_config = RnnLayerArgs(
             hidden_size=128,
             num_rnn_layers=2
         )
@@ -139,7 +159,15 @@ class BilingualVaeTest(tf.test.TestCase):
             half_cycle=half_cycle,
             cycle_extremum=0.85
         )
-        return num_epochs, bert_config, rnn_config, lr_args, momentum_args
+        return TrainingConf(
+            num_epochs=num_epochs,
+            bert_config=bert_config,
+            gpt_config=gpt_config,
+            rnn_config=rnn_config,
+            num_transformer2gru=2,
+            lr_args=lr_args,
+            momentum_args=momentum_args
+        )
 
     def _configure_save_and_log(self) -> SaveAndLogArgs:
         """Get checkpoint and log configuration"""
@@ -152,28 +180,34 @@ class BilingualVaeTest(tf.test.TestCase):
 
     def test_bert_birnn(self) -> None:
         """Train the model, save it, then continue training"""
-        num_epochs, bert_config, rnn_config, lr_args, momentum_args = self._configure_training()
+        training_conf = self._configure_training()
         logger = get_custom_logger(os_path_join(self.log_root_dir, "integration.log"))
         callback_args = self._configure_save_and_log()
         callbacks = [
             *basic_checkpoint_and_log(callback_args),
-            OneCycleScheduler(lr_args, log_freq=1, log_tool=logger),
-            OneCycleScheduler(momentum_args, log_tool=logger, log_freq=1, parameter="beta_1"),
+            OneCycleScheduler(training_conf.lr_args, log_freq=1, log_tool=logger),
+            OneCycleScheduler(training_conf.momentum_args, log_tool=logger, log_freq=1, parameter="beta_1"),
             DevEvaluator(self.dev_dataset, logger=logger, log_freq=5)
         ]
 
         strategy = tf.distribute.OneDeviceStrategy(self.device)
         with strategy.scope():
-            model = BertBiRnnVae(bert_config, rnn_config, kl_factor=0.5)
+            model = BertBiRnnVae(
+                enc_config=training_conf.bert_config,
+                dec_config=training_conf.gpt_config,
+                rnn_config=training_conf.rnn_config,
+                num_transformer2gru=training_conf.num_transformer2gru,
+                kl_factor=0.5
+            )
             optimizer = AdamW(
                 weight_decay=1e-6,
-                learning_rate=lr_args.initial_rate,
-                beta_1=momentum_args.initial_rate,
+                learning_rate=training_conf.lr_args.initial_rate,
+                beta_1=training_conf.momentum_args.initial_rate,
                 amsgrad=True
             )
             loss_fn = IgnorantSparseCatCrossentropy(from_logits=True, factor=0.5)
             model.compile(optimizer=optimizer, loss=loss_fn, metrics=[IgnorantSparseCatAccuracy()])
-        history = model.fit(x=self.train_dataset, epochs=num_epochs, callbacks=callbacks)
+        history = model.fit(x=self.train_dataset, epochs=training_conf.num_epochs, callbacks=callbacks)
 
         print(model.summary())
         self.assertIsInstance(history, tf.keras.callbacks.History)
@@ -181,8 +215,13 @@ class BilingualVaeTest(tf.test.TestCase):
 
     def test_serialization(self) -> None:
         """Test whether the model can be correctly serialized"""
-        _, bert_config, rnn_config, *_ = self._configure_training()
-        model0 = BertBiRnnVae(bert_config, rnn_config)
+        training_conf = self._configure_training()
+        model0 = BertBiRnnVae(
+            enc_config=training_conf.bert_config,
+            dec_config=training_conf.gpt_config,
+            rnn_config=training_conf.rnn_config,
+            num_transformer2gru=training_conf.num_transformer2gru
+        )
         x = next(iter(self.train_dataset))[0]
         pred0 = model0.predict_on_batch(x)
         model0.save((save_path := os_path_join(self.save_root_dir, "whole_model")))
