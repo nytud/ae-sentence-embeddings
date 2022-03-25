@@ -4,6 +4,7 @@ from collections import namedtuple
 from copy import deepcopy
 from os import environ
 from typing import Mapping, Any, Optional, Sequence, Union, Literal, Dict
+from inspect import signature
 
 import tensorflow as tf
 from tensorflow.keras.callbacks import History
@@ -14,7 +15,7 @@ from wandb.keras import WandbCallback
 from ae_sentence_embeddings.ae_training.model_type_config import (
     multilingual_models,
     model_type_map,
-    rnn_decoder_models
+    rnn_only_decoder_models
 )
 from ae_sentence_embeddings.argument_handling import (
     DataStreamArgs,
@@ -22,6 +23,7 @@ from ae_sentence_embeddings.argument_handling import (
     SaveAndLogArgs,
     DataSplitPathArgs,
     OneCycleArgs,
+    RnnLayerArgs,
     RnnArgs,
     camel_to_snake
 )
@@ -34,8 +36,9 @@ from ae_sentence_embeddings.data import get_train_and_validation, post_batch_fea
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
 
 GroupedArgs = namedtuple("GroupedArgs", ["data_split_path_args", "data_stream_args", "adamw_args",
-                         "lr_one_cycle_args", "momentum_one_cycle_args", "save_and_log_args"])
+                                         "lr_one_cycle_args", "momentum_one_cycle_args", "save_and_log_args"])
 ModelArgs = namedtuple("ModelArgs", ["model_type_name", "encoder_config", "decoder_config", "pooling_type"])
+PoolingTypes = Literal["average", "cls_sep"]
 
 
 def _underscored_snake_from_camel(word: Union[str, type]) -> str:
@@ -139,7 +142,7 @@ def group_model_args_from_flat(config_dict: Mapping[str, Any]) -> ModelArgs:
     model_type_name = config_dict["model_type"]
     encoder_config = BertConfig(**{k.lstrip(bert_config_pref): v for k, v in config_dict.values()
                                    if k.startswith((bert_config_pref := "bert_config_"))})
-    if model_type_name in rnn_decoder_models:
+    if model_type_name in rnn_only_decoder_models:
         decoder_config = RnnArgs.collect_from_dict(config_dict, prefix=_underscored_snake_from_camel(RnnArgs))
     else:
         decoder_config = OpenAIGPTConfig(**{k.lstrip(gpt_config_pref): v for k, v in config_dict.values()
@@ -169,6 +172,32 @@ def flatten_nested_dict(nested_data: Dict[str, Any]) -> Dict[str, Any]:
     return flattened_dict
 
 
+def _get_model_kwargs(
+        model_type: type,
+        pooling_type: PoolingTypes,
+        kl_factor: float,
+        rnn_args: Optional[RnnLayerArgs],
+        num_transformer2gru: Optional[int],
+) -> Dict[str, Union[PoolingTypes, float, int, RnnLayerArgs, None]]:
+    """Helper function to collect keyword arguments for model initialization"""
+    pooling_type_name, kl_factor_name = "pooling_type", "kl_factor"
+    rnn_args_name, num_transformer2gru_name = "rnn_args", "num_transformer2gru"
+    model_init_kwargs = {pooling_type_name: pooling_type}
+    expected_args = signature(model_type.__init__).parameters.keys()
+    if kl_factor_name in expected_args:
+        model_init_kwargs[kl_factor_name] = kl_factor
+    if rnn_args_name in expected_args:
+        if rnn_args is None:
+            raise ValueError(f"RNN arguments must be specified for {model_type.__name__}")
+        model_init_kwargs[rnn_args_name] = rnn_args
+    if num_transformer2gru_name in expected_args:
+        if num_transformer2gru is None:
+            raise ValueError("Number of dense layers connecting Transformer and RNN layers "
+                             f" must be specified for {model_type.__name__}")
+        model_init_kwargs[num_transformer2gru_name] = num_transformer2gru
+    return model_init_kwargs
+
+
 def pretrain_transformer_ae(
         model_type_name: str,
         dataset_split_paths: DataSplitPathArgs, *,
@@ -178,19 +207,21 @@ def pretrain_transformer_ae(
         validation_freq: Union[int, Literal["epoch"]],
         encoder_config: BertConfig,
         decoder_config: Union[OpenAIGPTConfig, RnnArgs],
-        pooling_type: Literal["average", "cls_sep"] = "cls_sep",
+        pooling_type: PoolingTypes = "cls_sep",
         kl_factor: float = 1.0,
-        num_epochs: int = 3,
+        top_rnn_args: Optional[RnnLayerArgs] = None,
+        num_transformer2gru: Optional[int] = None,
         lr_args: Optional[OneCycleArgs] = None,
         momentum_args: Optional[OneCycleArgs] = None,
         dataset_cache_dir: Optional[str] = None,
         devices: Optional[Sequence[str]] = None,
+        num_epochs: int = 3,
         verbose: Literal[0, 1, 2] = 2
 ) -> History:
     """Do pre-train
 
     Args:
-        model_type_name: model class name as a string
+        model_type_name: Model class name as a string
         dataset_split_paths: Paths to the dataset splits as a dataclass
         data_stream_args: Data streaming arguments as a dataclass
         adamw_args: AdamW optimizer arguments as a dataclass
@@ -202,17 +233,28 @@ def pretrain_transformer_ae(
         pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
         kl_factor: A normalizing constant by which the KL loss will be multiplied. This has effect
             only if a VAE is to be trained. Defaults to `1.0`
-        num_epochs: Number of ae_training epochs. Defaults to 3
+        top_rnn_args: Optional. Configuration data for RNN layers on the decoder top. It must be
+            specified if `BertBiRnnVae` is used. This argument will be ignored otherwise.
+        num_transformer2gru: Optional. Number of dense layers connecting the decoder Transformer and
+            RNN layers. It must be specified if `BertBiRnnVae` is used. This argument will be ignored otherwise.
+        num_epochs: Number of ae_training epochs. Defaults to `3`
         lr_args: Optional. Learning rate scheduler arguments as a dataclass
         momentum_args: Optional. Momentum scheduler arguments as a dataclass
         dataset_cache_dir: Optional. A cache directory for loading the `dataset`
         devices: Optional. GPU devices to use, e.g. `\"GPU:0\", \"GPU:1\"`
-        verbose: `verbose` argument for `model.fit`. Defaults to 2
+        verbose: `verbose` argument for `model.fit`. Defaults to `2`
 
     Returns:
         The training history object
     """
     model_type = model_type_map[model_type_name]
+    model_init_kwargs = _get_model_kwargs(
+        model_type=model_type,
+        pooling_type=pooling_type,
+        kl_factor=kl_factor,
+        rnn_args=top_rnn_args,
+        num_transformer2gru=num_transformer2gru
+    )
     data_options = tf.data.Options()
     data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
     train_dataset, dev_dataset = get_train_and_validation(
@@ -281,12 +323,11 @@ def pretrain_transformer_ae(
         strategy = tf.distribute.OneDeviceStrategy(device=device_to_use)
     with strategy.scope():
         model = model_type(
-            enc_config=encoder_config, dec_config=decoder_config, pooling_type=pooling_type)
-        if hasattr(model, "kl_factor") and kl_factor != 1.0:
-            model.set_kl_factor(kl_factor)
+            enc_config=encoder_config, dec_config=decoder_config, **model_init_kwargs)
         optimizer = AdamW(**adamw_args.to_dict())
         model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
                       metrics=[IgnorantSparseCatAccuracy()])
+    del model_init_kwargs, encoder_config, decoder_config
     history = model.fit(
         x=train_dataset,
         epochs=num_epochs,

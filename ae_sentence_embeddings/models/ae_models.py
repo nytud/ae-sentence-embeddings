@@ -240,10 +240,10 @@ class TransformerVae(BaseVae):
 class BertRnnVae(BaseVae):
     """A VAE with a Bert encoder and an RNN decoder"""
 
-    def __init__(self, enc_config: BertConfig, rnn_config: RnnArgs,
+    def __init__(self, enc_config: BertConfig, dec_config: RnnArgs,
                  pooling_type: Literal["average", "cls_sep"] = "cls_sep",
                  kl_factor: float = 1.0, **kwargs) -> None:
-        super().__init__(enc_config, rnn_config, pooling_type=pooling_type,
+        super().__init__(enc_config, dec_config, pooling_type=pooling_type,
                          kl_factor=kl_factor, **kwargs)
         self._decoder = SentAeGRUDecoder(self._dec_config)
 
