@@ -31,9 +31,11 @@ def main() -> None:
         encoder_config=model_configs.encoder_config,
         decoder_config=model_configs.decoder_config,
         pooling_type=model_configs.pooling_type,
+        kl_factor=model_configs.kl_factor,
+        top_rnn_args=model_configs.top_rnn_args,
+        num_transformer2gru=model_configs.num_transformer2gru,
         validation_freq=config.get("validation_freq", "epoch"),
-        kl_factor=config.get("kl_factor", 1.0),
-        num_epochs=config.get("num_epochs", 3),
+        num_epochs=config.get("num_epochs", 2),
         dataset_cache_dir=config.get("dataset_cache_dir"),
         devices=config.get("devices")
     )

@@ -1,6 +1,6 @@
 """A module for pre-training"""
 
-from collections import namedtuple
+from dataclasses import dataclass
 from copy import deepcopy
 from os import environ
 from typing import Mapping, Any, Optional, Sequence, Union, Literal, Dict
@@ -15,7 +15,8 @@ from wandb.keras import WandbCallback
 from ae_sentence_embeddings.ae_training.model_type_config import (
     multilingual_models,
     model_type_map,
-    rnn_only_decoder_models
+    rnn_only_decoder_models,
+    transformer_rnn_models
 )
 from ae_sentence_embeddings.argument_handling import (
     DataStreamArgs,
@@ -35,10 +36,30 @@ from ae_sentence_embeddings.callbacks import (
 from ae_sentence_embeddings.data import get_train_and_validation, post_batch_feature_pair
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
 
-GroupedArgs = namedtuple("GroupedArgs", ["data_split_path_args", "data_stream_args", "adamw_args",
-                                         "lr_one_cycle_args", "momentum_one_cycle_args", "save_and_log_args"])
-ModelArgs = namedtuple("ModelArgs", ["model_type_name", "encoder_config", "decoder_config", "pooling_type"])
 PoolingTypes = Literal["average", "cls_sep"]
+
+
+@dataclass
+class GroupedArgs:
+    """A dataclass for training dataclasses"""
+    data_split_path_args: DataSplitPathArgs
+    data_stream_args: DataStreamArgs
+    adamw_args: AdamwArgs
+    lr_one_cycle_args: OneCycleArgs
+    momentum_one_cycle_args: OneCycleArgs
+    save_and_log_args: SaveAndLogArgs
+
+
+@dataclass
+class ModelArgs:
+    """A dataclass for model specification data"""
+    model_type_name: str
+    encoder_config: BertConfig
+    decoder_config: Union[OpenAIGPTConfig, RnnArgs]
+    pooling_type: PoolingTypes
+    kl_factor: float = 1.0
+    top_rnn_args: Optional[RnnLayerArgs] = None
+    num_transformer2gru: Optional[int] = None
 
 
 def _underscored_snake_from_camel(word: Union[str, type]) -> str:
@@ -95,9 +116,14 @@ def group_train_args_from_structured(args: Mapping[str, Any]) -> GroupedArgs:
         lr_args = None
         momentum_args = None
     save_log_args = SaveAndLogArgs.collect_from_dict(args)
-    grouped_args = GroupedArgs(dataset_split_paths, data_args, adamw_args,
-                               lr_args, momentum_args, save_log_args)
-    return grouped_args
+    return GroupedArgs(
+        data_split_path_args=dataset_split_paths,
+        data_stream_args=data_args,
+        adamw_args=adamw_args,
+        lr_one_cycle_args=lr_args,
+        momentum_one_cycle_args=momentum_args,
+        save_and_log_args=save_log_args
+    )
 
 
 def group_train_args_from_flat(args: Mapping[str, Any]) -> GroupedArgs:
@@ -123,9 +149,14 @@ def group_train_args_from_flat(args: Mapping[str, Any]) -> GroupedArgs:
         lr_args = None
         momentum_args = None
     save_log_args = SaveAndLogArgs.collect_from_dict(args, prefix=_underscored_snake_from_camel(SaveAndLogArgs))
-    grouped_args = GroupedArgs(dataset_split_paths, data_args, adamw_args,
-                               lr_args, momentum_args, save_log_args)
-    return grouped_args
+    return GroupedArgs(
+        data_split_path_args=dataset_split_paths,
+        data_stream_args=data_args,
+        adamw_args=adamw_args,
+        lr_one_cycle_args=lr_args,
+        momentum_one_cycle_args=momentum_args,
+        save_and_log_args=save_log_args
+    )
 
 
 def group_model_args_from_flat(config_dict: Mapping[str, Any]) -> ModelArgs:
@@ -142,13 +173,24 @@ def group_model_args_from_flat(config_dict: Mapping[str, Any]) -> ModelArgs:
     model_type_name = config_dict["model_type"]
     encoder_config = BertConfig(**{k.lstrip(bert_config_pref): v for k, v in config_dict.values()
                                    if k.startswith((bert_config_pref := "bert_config_"))})
+    top_rnn_args = None
     if model_type_name in rnn_only_decoder_models:
         decoder_config = RnnArgs.collect_from_dict(config_dict, prefix=_underscored_snake_from_camel(RnnArgs))
     else:
         decoder_config = OpenAIGPTConfig(**{k.lstrip(gpt_config_pref): v for k, v in config_dict.values()
                                             if k.startswith((gpt_config_pref := "openai_gpt_config_"))})
-    pooling_type = config_dict["pooling_type"]
-    return ModelArgs(model_type_name, encoder_config, decoder_config, pooling_type)
+        if model_type_name in transformer_rnn_models:
+            top_rnn_args = RnnLayerArgs.collect_from_dict(
+                config_dict, prefix=_underscored_snake_from_camel(RnnLayerArgs))
+    return ModelArgs(
+        model_type_name=model_type_name,
+        encoder_config=encoder_config,
+        decoder_config=decoder_config,
+        top_rnn_args=top_rnn_args,
+        pooling_type=config_dict["pooling_type"],
+        kl_factor=config_dict.get("kl_factor", 1.),
+        num_transformer2gru=config_dict.get("num_transformer2gru")
+    )
 
 
 def flatten_nested_dict(nested_data: Dict[str, Any]) -> Dict[str, Any]:

@@ -9,7 +9,7 @@
         "batch_size": 32,
         "num_buckets": 3,
         "first_bucket_boundary": 33,
-        "shuffling_buffer_size": 1024
+        "shuffling_buffer_size": 512
     },
     "adamw_args": {
         "weight_decay": 5e-5,
@@ -39,10 +39,15 @@
         "num_attention_heads": 12,
         "intermediate_size": 3072
     },
-    "rnn_args": {
-        "num_rnn_layers": 2,
+    "openai_gpt_config": {
         "vocab_size": 30000,
-        "hidden_size": 768
+        "n_embd": 768,
+        "n_layer": 3,
+        "n_head": 12
+    },
+    "rnn_layer_args": {
+        "num_rnn_layers": 2,
+        "hidden_size": 1536
     },
     "num_epochs": 3,
     "model_type": "BertBiRnnVae",

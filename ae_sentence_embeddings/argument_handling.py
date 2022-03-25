@@ -224,7 +224,7 @@ class RnnLayerArgs(DeeplArgs):
         layernorm_eps: Epsilon parameter for layer normalization. Defaults to 1e-12
         dropout_rate: A dropout rate between 0 and 1. Defaults to 0.1
     """
-    num_rnn_layers: int = 2
+    num_rnn_layers: int
     hidden_size: int = 768
     layernorm_eps: float = 1e-12
     dropout_rate: float = 0.1
