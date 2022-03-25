@@ -2,7 +2,6 @@
 
 from typing import Iterable, Optional
 from argparse import Namespace, ArgumentParser
-from os.path import isfile
 
 from tokenizers import Tokenizer
 from tokenizers.models import BPE
@@ -11,8 +10,9 @@ from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.processors import TemplateProcessing
 
 from ae_sentence_embeddings.argument_handling import (
-    arg_checker,
-    check_if_positive,
+    check_if_file,
+    check_if_nonempty_string,
+    check_if_positive_int,
     check_if_output_path
 )
 
@@ -20,16 +20,16 @@ from ae_sentence_embeddings.argument_handling import (
 def get_tokenizer_training_args() -> Namespace:
     """Get command line arguments for tokenizer training"""
     parser = ArgumentParser(description="Arguments for training a BPE tokenizer from scratch")
-    parser.add_argument("training_file", type=arg_checker(isfile),
+    parser.add_argument("training_file", type=check_if_file,
                         help="Path to the plain text training corpus")
     parser.add_argument("save_path", type=check_if_output_path,
                         help="Path to a `.json` file where the trained tokenizer will be saved")
-    parser.add_argument("--vocab-size", dest="vocab_size", default=30000, type=check_if_positive,
+    parser.add_argument("--vocab-size", dest="vocab_size", default=30000, type=check_if_positive_int,
                         help="Required vocabulary size. Defaults to 30000")
-    parser.add_argument("--max-length", dest="max_length", type=check_if_positive,
+    parser.add_argument("--max-length", dest="max_length", type=check_if_positive_int,
                         help="Optional. Maximal sequence length to which longer sequences will be truncated. "
                              "If not specified, truncation will not be used")
-    parser.add_argument("--unk-token", dest="unk_token", default="[UNK]", type=arg_checker(lambda x: len(x) > 0),
+    parser.add_argument("--unk-token", dest="unk_token", default="[UNK]", type=check_if_nonempty_string,
                         help="Unknown token. Defaults to `'[UNK]'`")
     parser.add_argument("--special-tokens", nargs='*', dest="special_tokens",
                         help="Optional. A list of special tokens apart from the unknown token. If a CLS+SEP "

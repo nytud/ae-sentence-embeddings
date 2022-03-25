@@ -1,7 +1,7 @@
 """A module for functions that adapt inputs to layers
 and other utils: logging, I/O handling, n-gram iteration"""
 
-from typing import Dict, List, Tuple, Union, Any, Optional, Literal, Iterable, Iterator
+from typing import Dict, Tuple, Union, Any, Optional, Literal, Iterable, Iterator
 from argparse import ArgumentParser
 from itertools import tee, islice
 import json
@@ -50,33 +50,6 @@ def make_decoder_inputs(input_tensor: tf.Tensor, pad_value: int = 0) -> tf.Tenso
     """
     pad_col = tf.zeros((tf.shape(input_tensor)[0], 1), dtype=input_tensor.dtype) + pad_value
     return tf.concat([input_tensor[:, 1:], pad_col], axis=-1)
-
-
-# This is no longer needed
-def make_dummy_bert_inputs(
-        input_tensor: tf.Tensor,
-        num_hidden_layers: int = 6,
-) -> Dict[str, Union[tf.Tensor, List[None]]]:
-    """Create dummy BERT inputs so that layers can handle the data. Source:
-    https://github.com/huggingface/transformers/blob/546a91abe95117fb06d3ed34edfa0b8010d9b48c/src/transformers/models/
-    bert/modeling_tf_bert.py
-
-    Args:
-        input_tensor: A 2D tensor with shape `(batch_size, sequence_length)` that contains token IDs or attention mask
-        num_hidden_layers: Number of BERT hidden layers. Defaults to 6
-
-    Returns:
-        A dictionary with inputs required by HuggingFace BERT layers
-    """
-    input_shape = shape_list(input_tensor)
-    head_mask = [None] * num_hidden_layers
-    token_type_ids = tf.fill(dims=input_shape, value=0)
-    past_key_values = [None] * num_hidden_layers
-    return {
-        "head_mask": head_mask,
-        "token_type_ids": token_type_ids,
-        "past_key_values": past_key_values,
-    }
 
 
 def read_json(file_path: str) -> Dict[str, Any]:

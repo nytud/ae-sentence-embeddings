@@ -339,15 +339,39 @@ def arg_checker(check_function: Callable[[str], bool]) -> Callable[[str], Union[
     return _check_arg
 
 
-@arg_checker
-def check_if_positive(x: Union[str, int, float]) -> bool:
+def check_if_positive_int(maybe_positive: Union[str, int, float]) -> int:
     """Check if an integer is positive"""
-    if not isinstance(x, int):
-        x = int(x)
-    return x > 0
+    if not isinstance(maybe_positive, int):
+        maybe_positive = int(maybe_positive)
+    if maybe_positive <= 0:
+        raise ValueError(f"A positive integer is expected, got {maybe_positive}")
+    return maybe_positive
 
 
-@arg_checker
-def check_if_output_path(output_path: str) -> bool:
-    """Check if `output_path` is correct"""
-    return Path(output_path).parent.is_dir()
+def check_if_output_path(maybe_output_path: str) -> str:
+    """Check if the input can be an output path"""
+    if not Path(maybe_output_path).parent.is_dir():
+        raise ValueError(f"{maybe_output_path} is not a valid path "
+                         "as the parent directory does not exist.")
+    return maybe_output_path
+
+
+def check_if_dir(maybe_dir: str) -> str:
+    """Check if the input is a path to a directory"""
+    if not Path(maybe_dir).is_dir():
+        raise ValueError(f"{maybe_dir} is not a path to a directory.")
+    return maybe_dir
+
+
+def check_if_file(maybe_file: str) -> str:
+    """Check if the input is a path to a file"""
+    if not Path(maybe_file).is_file():
+        raise ValueError(f"{maybe_file} is not a path to a file.")
+    return maybe_file
+
+
+def check_if_nonempty_string(maybe_nonempty: str) -> str:
+    """Check if the input is not the empty string"""
+    if maybe_nonempty == "":
+        raise ValueError(f"The empty string is not a valid argument.")
+    return maybe_nonempty

@@ -12,7 +12,7 @@ from ae_sentence_embeddings.data import tokenize_hgf_dataset
 from ae_sentence_embeddings.data.tokenize_dataset import load_tokenizer
 from ae_sentence_embeddings.argument_handling import (
     arg_checker,
-    check_if_positive,
+    check_if_positive_int,
     check_if_output_path
 )
 
@@ -34,7 +34,7 @@ def get_tokenization_args() -> Namespace:
                              "If your data is monolingual, use the default value: `['text',]`")
     parser.add_argument("--tokenizer", default="SZTAKI-HLT/hubert-base-cc", type=load_tokenizer,
                         help="Tokenizer name or path. Defaults to `SZTAKI-HLT/hubert-base-cc`")
-    parser.add_argument("--max-length", dest="max_length", type=check_if_positive, default=128,
+    parser.add_argument("--max-length", dest="max_length", type=check_if_positive_int, default=128,
                         help="Maximal sequence length in the number of tokens. Defaults to 128")
     parser.add_argument("--cache-dir", dest="cache_dir", help="Optional. The cache directory for the dataset")
     return parser.parse_args()
