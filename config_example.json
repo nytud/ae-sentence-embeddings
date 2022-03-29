@@ -49,6 +49,7 @@
         "num_rnn_layers": 2,
         "hidden_size": 1536
     },
+    "num_transformer2gru": 2,
     "num_epochs": 3,
     "model_type": "BertBiRnnVae",
     "pooling_type": "cls_sep",

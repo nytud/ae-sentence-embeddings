@@ -171,14 +171,16 @@ def group_model_args_from_flat(config_dict: Mapping[str, Any]) -> ModelArgs:
             and the pooling type (a string). These are returned as a namedtuple
     """
     model_type_name = config_dict["model_type"]
-    encoder_config = BertConfig(**{k.lstrip(bert_config_pref): v for k, v in config_dict.values()
-                                   if k.startswith((bert_config_pref := "bert_config_"))})
+    bert_config_pref = "bert_config_"
+    encoder_config = BertConfig(**{k[len(bert_config_pref):]: v for k, v in config_dict.items()
+                                   if k.startswith(bert_config_pref)})
     top_rnn_args = None
     if model_type_name in rnn_only_decoder_models:
         decoder_config = RnnArgs.collect_from_dict(config_dict, prefix=_underscored_snake_from_camel(RnnArgs))
     else:
-        decoder_config = OpenAIGPTConfig(**{k.lstrip(gpt_config_pref): v for k, v in config_dict.values()
-                                            if k.startswith((gpt_config_pref := "openai_gpt_config_"))})
+        gpt_config_pref = "openai_gpt_config_"
+        decoder_config = OpenAIGPTConfig(**{k[len(gpt_config_pref):]: v for k, v in config_dict.items()
+                                            if k.startswith(gpt_config_pref)})
         if model_type_name in transformer_rnn_models:
             top_rnn_args = RnnLayerArgs.collect_from_dict(
                 config_dict, prefix=_underscored_snake_from_camel(RnnLayerArgs))
@@ -223,7 +225,7 @@ def _get_model_kwargs(
 ) -> Dict[str, Union[PoolingTypes, float, int, RnnLayerArgs, None]]:
     """Helper function to collect keyword arguments for model initialization"""
     pooling_type_name, kl_factor_name = "pooling_type", "kl_factor"
-    rnn_args_name, num_transformer2gru_name = "rnn_args", "num_transformer2gru"
+    rnn_args_name, num_transformer2gru_name = "rnn_config", "num_transformer2gru"
     model_init_kwargs = {pooling_type_name: pooling_type}
     expected_args = signature(model_type.__init__).parameters.keys()
     if kl_factor_name in expected_args:
@@ -309,7 +311,6 @@ def pretrain_transformer_ae(
         dev_dataset = dev_dataset.map(post_batch_feature_pair)
     train_dataset = train_dataset.with_options(data_options).prefetch(2)
     dev_dataset = dev_dataset.with_options(data_options).prefetch(2)
-
     callbacks = [AeCustomCheckpoint(
         checkpoint_root=save_and_log_args.checkpoint_path,
         save_freq=save_and_log_args.save_freq,
