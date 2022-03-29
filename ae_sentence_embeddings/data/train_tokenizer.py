@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """A script for training a BPE tokenizer with the `tokenizers` library"""
 
 from typing import Iterable, Optional
