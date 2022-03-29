@@ -1,7 +1,6 @@
 """Tokenize raw text data"""
 
 from argparse import Namespace, ArgumentParser
-from os.path import isfile
 from warnings import warn
 
 from datasets import load_dataset

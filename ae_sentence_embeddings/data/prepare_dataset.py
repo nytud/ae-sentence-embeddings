@@ -55,10 +55,11 @@ def convert_to_tf_dataset(dataset: HgfDataset) -> TFDataset:
     return TFDataset.from_generator(data_gen, output_signature=out_spec)
 
 
-@tf.function
-def pre_pad_multilingual(feature_tensors: Tuple[tf.Tensor, ...],
-                         target_tensors: Tuple[tf.Tensor, ...],
-                         padding_tuples: Tuple[Iterable[int], Iterable[int]]) -> MultiLingTensorStruct:
+def pre_pad_multilingual(
+        feature_tensors: Tuple[tf.Tensor, ...],
+        target_tensors: Tuple[tf.Tensor, ...],
+        padding_tuples: Tuple[Iterable[int], Iterable[int]]
+) -> MultiLingTensorStruct:
     """Pad tensors in a single example in a multilingual dataset so that they have the same length
 
     Args:
@@ -70,8 +71,7 @@ def pre_pad_multilingual(feature_tensors: Tuple[tf.Tensor, ...],
         The padded tensors nested with the structure `(feature_tensors, target_tensors)`
     """
     outputs = []
-    feature_paddings, target_paddings = padding_tuples
-    for tensor_tuple, padding_tuple in ((feature_tensors, feature_paddings), (target_tensors, target_paddings)):
+    for tensor_tuple, padding_tuple in zip((feature_tensors, target_tensors), padding_tuples):
         new_tensors = []
         max_len = tf.reduce_max([tf.shape(tensor)[0] for tensor in tensor_tuple])
         for tensor, padding_value in zip(tensor_tuple, padding_tuple):
@@ -113,7 +113,7 @@ def pad_and_batch(
     if isinstance(input_padding := data_stream_args.input_padding, list):
         input_padding = tuple(input_padding)
     if isinstance(target_padding := data_stream_args.target_padding, list):
-        target_padding = tuple(input_padding)
+        target_padding = tuple(target_padding)
     padding_values = (input_padding, target_padding)
     if isinstance(target_padding, tuple):
         tf_dataset = tf_dataset.map(partial(pre_pad_multilingual, padding_tuples=padding_values))

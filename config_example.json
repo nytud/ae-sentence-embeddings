@@ -4,7 +4,7 @@
         "dev_path": "dev.jsonl"
     },
     "data_stream_args": {
-        "input_padding": [0, 0],
+        "input_padding": [0, 0, 0, 0],
         "target_padding": [-1, -1],
         "batch_size": 32,
         "num_buckets": 3,
