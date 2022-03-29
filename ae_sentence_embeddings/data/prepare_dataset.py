@@ -70,7 +70,8 @@ def pre_pad_multilingual(feature_tensors: Tuple[tf.Tensor, ...],
         The padded tensors nested with the structure `(feature_tensors, target_tensors)`
     """
     outputs = []
-    for tensor_tuple, padding_tuple in zip((feature_tensors, target_tensors), padding_tuples):
+    feature_paddings, target_paddings = padding_tuples
+    for tensor_tuple, padding_tuple in ((feature_tensors, feature_paddings), (target_tensors, target_paddings)):
         new_tensors = []
         max_len = tf.reduce_max([tf.shape(tensor)[0] for tensor in tensor_tuple])
         for tensor, padding_value in zip(tensor_tuple, padding_tuple):
@@ -79,6 +80,7 @@ def pre_pad_multilingual(feature_tensors: Tuple[tf.Tensor, ...],
             new_tensors.append(new_tensor)
         outputs.append(tuple(new_tensors))
     # The output type is correct, PyCharm may detect a mismatch between expected type and returned type
+    # noinspection PyTypeChecker
     return tuple(outputs)
 
 
@@ -91,10 +93,10 @@ def pad_and_batch(
 
     Variable calculations for bucketing:
         bucket_boundaries: If both the `num_buckets` and `first_bucket_boundary` fields of the input dataclass are
-                           specified, the nth bucket boundary will be calculated as
-                           `(first_bucket_boundary-1) * 2**n + 1`. This variable will not be calculated otherwise
-        batch_sizes: If bucketing is used, the batch size for the nth bucket will be calculated as `batch_size // 2**n`.
-                     This variable will not be calculated otherwise.
+            specified, the nth bucket boundary will be calculated as `(first_bucket_boundary-1) * 2**n + 1`.
+            This variable will not be calculated otherwise.
+        batch_sizes: If bucketing is used, the batch size for the nth bucket will be calculated as
+            `batch_size // 2**n`. This variable will not be calculated otherwise.
 
     Args:
         tf_dataset: A `tensorflow.data.Dataset` object
@@ -156,6 +158,7 @@ def post_batch_multilingual(
             new_tensors = new_tensors[0]
         outputs.append(new_tensors)
     # The output type is correct, PyCharm may detect a mismatch between expected type and returned type
+    # noinspection PyTypeChecker
     return tuple(outputs)
 
 
