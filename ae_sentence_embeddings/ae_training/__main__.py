@@ -17,9 +17,8 @@ def main() -> None:
     parser.add_argument("--project", help="Optional. Name of the current WandB project.")
     args = parser.parse_args()
     arg_dict = flatten_nested_dict(read_json(args.config_file))
-    # wandb.init(project=args.project, config=arg_dict)
-    # config = wandb.config
-    config = arg_dict
+    wandb.init(project=args.project, config=arg_dict)
+    config = wandb.config
 
     train_args = group_train_args_from_flat(config)
     model_configs = group_model_args_from_flat(config)
