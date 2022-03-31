@@ -276,6 +276,7 @@ class BertBiRnnVae(BaseVae):
             num_transformer2gru: int,
             pooling_type: Literal["cls_sep", "average"] = "cls_sep",
             kl_factor: float = 1.0,
+            swap_p: float = 0.5,
             **kwargs
     ) -> None:
         """Initialize the model
@@ -287,13 +288,14 @@ class BertBiRnnVae(BaseVae):
             num_transformer2gru: number of dense layers connecting the Transformer decoder and the top RNN
             pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
             kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`
+            swap_p: probability of swapping the inputs of the two decoders. Defaults to `0.5`
             **kwargs: Keyword arguments for the `keras.Model` class
         """
         super().__init__(enc_config, dec_config, pooling_type=pooling_type,
                          kl_factor=kl_factor, **kwargs)
         self._rnn_config = deepcopy(rnn_config)
         self._splitter = tfl.Lambda(lambda x: tf.split(x, 2))
-        self._swapper = RandomSwapLayer()
+        self._swapper = RandomSwapLayer(p=swap_p)
         self._decoder = ae_double_transformer_gru(dec_config, rnn_config, num_transformer2gru)
         dec_embedding_config = RegularizedEmbeddingArgs(
             vocab_size=dec_config.vocab_size,
@@ -349,3 +351,18 @@ class BertBiRnnVae(BaseVae):
     @property
     def rnn_config(self) -> MappingProxyType:
         return MappingProxyType(self._rnn_config.to_dict())
+
+    @property
+    def swap_p(self) -> float:
+        return self._swapper.p
+
+    def set_swap_p(self, new_swap_p: float) -> None:
+        """A setter for the `swap_p` parameter"""
+        self._swapper.p = new_swap_p
+
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super().get_config()
+        return {
+            **base_config,
+            "swap_p": self.swap_p
+        }

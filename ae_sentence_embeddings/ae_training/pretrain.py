@@ -58,6 +58,7 @@ class ModelArgs:
     decoder_config: Union[OpenAIGPTConfig, RnnArgs]
     pooling_type: PoolingTypes
     kl_factor: float = 1.0
+    swap_p: float = 0.5
     top_rnn_args: Optional[RnnLayerArgs] = None
     num_transformer2gru: Optional[int] = None
 
@@ -191,6 +192,7 @@ def group_model_args_from_flat(config_dict: Mapping[str, Any]) -> ModelArgs:
         top_rnn_args=top_rnn_args,
         pooling_type=config_dict["pooling_type"],
         kl_factor=config_dict.get("kl_factor", 1.),
+        swap_p=config_dict.get("swap_p", 0.5),
         num_transformer2gru=config_dict.get("num_transformer2gru")
     )
 
@@ -220,16 +222,19 @@ def _get_model_kwargs(
         model_type: type,
         pooling_type: PoolingTypes,
         kl_factor: float,
+        swap_p: float,
         rnn_args: Optional[RnnLayerArgs],
         num_transformer2gru: Optional[int],
 ) -> Dict[str, Union[PoolingTypes, float, int, RnnLayerArgs, None]]:
     """Helper function to collect keyword arguments for model initialization"""
-    pooling_type_name, kl_factor_name = "pooling_type", "kl_factor"
+    pooling_type_name, kl_factor_name, swap_p_name = "pooling_type", "kl_factor", "swap_p"
     rnn_args_name, num_transformer2gru_name = "rnn_config", "num_transformer2gru"
     model_init_kwargs = {pooling_type_name: pooling_type}
     expected_args = signature(model_type.__init__).parameters.keys()
     if kl_factor_name in expected_args:
         model_init_kwargs[kl_factor_name] = kl_factor
+    if swap_p_name in expected_args:
+        model_init_kwargs[swap_p_name] = swap_p
     if rnn_args_name in expected_args:
         if rnn_args is None:
             raise ValueError(f"RNN arguments must be specified for {model_type.__name__}")
@@ -253,6 +258,7 @@ def pretrain_transformer_ae(
         decoder_config: Union[OpenAIGPTConfig, RnnArgs],
         pooling_type: PoolingTypes = "cls_sep",
         kl_factor: float = 1.0,
+        swap_p: float = 0.5,
         top_rnn_args: Optional[RnnLayerArgs] = None,
         num_transformer2gru: Optional[int] = None,
         lr_args: Optional[OneCycleArgs] = None,
@@ -277,6 +283,7 @@ def pretrain_transformer_ae(
         pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
         kl_factor: A normalizing constant by which the KL loss will be multiplied. This has effect
             only if a VAE is to be trained. Defaults to `1.0`
+        swap_p: Probability of swapping the inputs of the two decoders. Defaults to `0.5`
         top_rnn_args: Optional. Configuration data for RNN layers on the decoder top. It must be
             specified if `BertBiRnnVae` is used. This argument will be ignored otherwise.
         num_transformer2gru: Optional. Number of dense layers connecting the decoder Transformer and
@@ -296,6 +303,7 @@ def pretrain_transformer_ae(
         model_type=model_type,
         pooling_type=pooling_type,
         kl_factor=kl_factor,
+        swap_p=swap_p,
         rnn_args=top_rnn_args,
         num_transformer2gru=num_transformer2gru
     )

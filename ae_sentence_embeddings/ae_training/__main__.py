@@ -34,6 +34,7 @@ def main() -> None:
         decoder_config=model_configs.decoder_config,
         pooling_type=model_configs.pooling_type,
         kl_factor=model_configs.kl_factor,
+        swap_p=model_configs.swap_p,
         top_rnn_args=model_configs.top_rnn_args,
         num_transformer2gru=model_configs.num_transformer2gru,
         validation_freq=config.get("validation_freq", "epoch"),
