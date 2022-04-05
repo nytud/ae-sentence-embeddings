@@ -75,17 +75,17 @@ def _underscored_snake_from_camel(word: Union[str, type]) -> str:
 
 
 def devices_setup(devices: Optional[Sequence[str]] = None) -> int:
-    """Setup devices for ae_training
+    """Setup devices for training
 
     Args:
-        devices: Optional. A list of device names
+        devices: Optional. A list of device names.
 
     Returns:
         The number of GPUs to be used
 
     """
     if devices is None:
-        num_gpus = 0
+        num_gpus = len(tf.config.get_visible_devices("GPU"))
     else:
         gpus = [device for device in devices if device.lower().startswith(("gpu", "/gpu"))]
         num_gpus = len(gpus)
