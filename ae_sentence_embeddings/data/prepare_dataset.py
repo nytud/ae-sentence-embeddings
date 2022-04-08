@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """A module for preparing datasets for usage with TensorFlow/Keras"""
 
 from typing import Generator, Tuple, Optional, Iterable, Union
@@ -210,9 +212,9 @@ def get_train_and_validation(
     """
     dev_args = deepcopy(train_args)
     dev_args.shuffling_buffer_size = None
-    train_dataset = convert_to_tf_dataset(load_dataset('json', split='train',
+    train_dataset = convert_to_tf_dataset(load_dataset("json", split="train",
                                                        data_files=[data_split_paths.train_path], cache_dir=cache_dir))
-    dev_dataset = convert_to_tf_dataset(load_dataset('json', split='train',
+    dev_dataset = convert_to_tf_dataset(load_dataset("json", split="train",
                                                      data_files=[data_split_paths.dev_path], cache_dir=cache_dir))
     train_dataset = pad_and_batch(train_dataset, data_stream_args=train_args)
     dev_dataset = pad_and_batch(dev_dataset, data_stream_args=dev_args)

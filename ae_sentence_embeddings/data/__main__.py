@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """Tokenize raw text data"""
 
 from argparse import Namespace, ArgumentParser
