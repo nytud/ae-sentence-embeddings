@@ -1,5 +1,6 @@
 from .pretrain import (
     GroupedArgs,
+    PoolingTypes,
     devices_setup,
     log_and_schedule_setup,
     pretrain_transformer_ae,

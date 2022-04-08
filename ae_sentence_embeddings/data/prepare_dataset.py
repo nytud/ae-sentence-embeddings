@@ -189,14 +189,20 @@ def post_batch_feature_pair(
 def get_train_and_validation(
         data_split_paths: DataSplitPathArgs,
         train_args: DataStreamArgs,
-        cache_dir: Optional[str] = None
+        cache_dir: Optional[str] = None,
+        set_data_shard: bool = False,
+        prefetch: Optional[int] = None,
 ) -> Tuple[TFDataset, TFDataset]:
     """Get a training and a validation TensorFlow dataset from files
 
     Args:
-        data_split_paths: A dataclass with paths to `.jsonl` dataset splits
-        train_args: Data streaming arguments for ae_training as a dataclass
-        cache_dir: Optional. Cache directory for dataset loading
+        data_split_paths: A dataclass with paths to `.jsonl` dataset splits.
+        train_args: Data streaming arguments for ae_training as a dataclass.
+        cache_dir: Optional. Cache directory for dataset loading.
+        set_data_shard: Specify if TensorFlow `auto_shard_policy` should be
+            set to `DATA`. Defaults to `False`.
+        prefetch: Optional. If specified, `prefetch` batches will be prefetched
+            during training.
 
     Returns:
         The ae_training and the validation TensorFlow dataset
@@ -210,4 +216,12 @@ def get_train_and_validation(
                                                      data_files=[data_split_paths.dev_path], cache_dir=cache_dir))
     train_dataset = pad_and_batch(train_dataset, data_stream_args=train_args)
     dev_dataset = pad_and_batch(dev_dataset, data_stream_args=dev_args)
+    if set_data_shard:
+        data_options = tf.data.Options()
+        data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+        train_dataset = train_dataset.with_options(data_options)
+        dev_dataset = dev_dataset.with_options(data_options)
+    if prefetch is not None:
+        train_dataset = train_dataset.prefetch(prefetch)
+        dev_dataset = dev_dataset.prefetch(prefetch)
     return train_dataset, dev_dataset

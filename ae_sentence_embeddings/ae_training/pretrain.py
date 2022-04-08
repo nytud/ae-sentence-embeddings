@@ -345,6 +345,7 @@ def pretrain_transformer_ae(
         dataset_cache_dir: Optional[str] = None,
         devices: Optional[Sequence[str]] = None,
         num_epochs: int = 3,
+        prefetch: Optional[int] = 2,
         verbose: Literal[0, 1, 2] = 2
 ) -> History:
     """Do pre-train
@@ -372,6 +373,8 @@ def pretrain_transformer_ae(
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
         dataset_cache_dir: Optional. A cache directory for loading the `dataset`.
         devices: Optional. GPU devices to use, e.g. `\"GPU:0\", \"GPU:1\"`.
+        prefetch: Optional. If specified, `prefetch` batches will be prefetched during training.
+            Prefetching can be disabled by setting this to `None`. Defaults to `2`.
         verbose: `verbose` argument for `model.fit`. Defaults to `2`.
 
     Returns:
@@ -389,18 +392,16 @@ def pretrain_transformer_ae(
     )
 
     # Configure the data
-    data_options = tf.data.Options()
-    data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
     train_dataset, dev_dataset = get_train_and_validation(
         data_split_paths=dataset_split_paths,
         train_args=data_stream_args,
-        cache_dir=dataset_cache_dir
+        cache_dir=dataset_cache_dir,
+        set_data_shard=True,
+        prefetch=prefetch
     )
     if model_type_name in multilingual_models:
         train_dataset = train_dataset.map(post_batch_feature_pair)
         dev_dataset = dev_dataset.map(post_batch_feature_pair)
-    train_dataset = train_dataset.with_options(data_options).prefetch(2)
-    dev_dataset = dev_dataset.with_options(data_options).prefetch(2)
 
     # Configure the callbacks
     fit_validation_data = dev_dataset if validation_freq == "epoch" else None
