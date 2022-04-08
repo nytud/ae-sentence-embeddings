@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from copy import deepcopy
 from os import environ
-from typing import Mapping, Any, Optional, Sequence, Union, Literal, Dict
+from typing import Mapping, Any, Optional, Sequence, Union, Literal, Dict, List
 from inspect import signature
 
 import tensorflow as tf
@@ -74,15 +74,17 @@ def _underscored_snake_from_camel(word: Union[str, type]) -> str:
     return snake_word + "_"
 
 
-def devices_setup(devices: Optional[Sequence[str]] = None) -> int:
-    """Setup devices for training
+def devices_setup(
+        devices: Optional[Sequence[str]] = None
+) -> Union[tf.distribute.MirroredStrategy, tf.distribute.OneDeviceStrategy]:
+    """Setup devices for training.
 
     Args:
         devices: Optional. A list of device names.
 
     Returns:
-        The number of GPUs to be used
-
+        A distribution strategy: `MirroredStrategy` is multiple GPUs
+        are available or `OneDeviceStrategy` otherwise.
     """
     if devices is None:
         num_gpus = len(tf.config.get_visible_devices("GPU"))
@@ -93,7 +95,12 @@ def devices_setup(devices: Optional[Sequence[str]] = None) -> int:
             gpus = ",".join(gpu[-1] for gpu in gpus)
             environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             environ["CUDA_VISIBLE_DEVICES"] = gpus
-    return num_gpus
+    if num_gpus > 1:
+        strategy = tf.distribute.MirroredStrategy()
+    else:
+        device_to_use = devices[0] if devices is not None else None
+        strategy = tf.distribute.OneDeviceStrategy(device=device_to_use)
+    return strategy
 
 
 def group_train_args_from_structured(args: Mapping[str, Any]) -> GroupedArgs:
@@ -247,78 +254,32 @@ def _get_model_kwargs(
     return model_init_kwargs
 
 
-def pretrain_transformer_ae(
-        model_type_name: str,
-        dataset_split_paths: DataSplitPathArgs, *,
-        data_stream_args: DataStreamArgs,
-        adamw_args: AdamwArgs,
+def log_and_schedule_setup(
+        dev_dataset: tf.data.Dataset,
         save_and_log_args: SaveAndLogArgs,
         validation_freq: Union[int, Literal["epoch"]],
-        encoder_config: BertConfig,
-        decoder_config: Union[OpenAIGPTConfig, RnnArgs],
-        pooling_type: PoolingTypes = "cls_sep",
-        kl_factor: float = 1.0,
-        swap_p: float = 0.5,
-        top_rnn_args: Optional[RnnLayerArgs] = None,
-        num_transformer2gru: Optional[int] = None,
         lr_args: Optional[OneCycleArgs] = None,
         momentum_args: Optional[OneCycleArgs] = None,
-        dataset_cache_dir: Optional[str] = None,
-        devices: Optional[Sequence[str]] = None,
-        num_epochs: int = 3,
-        verbose: Literal[0, 1, 2] = 2
-) -> History:
-    """Do pre-train
+) -> List[tf.keras.callbacks.Callback]:
+    """Logging and learning rate scheduling setup.
 
     Args:
-        model_type_name: Model class name as a string
-        dataset_split_paths: Paths to the dataset splits as a dataclass
-        data_stream_args: Data streaming arguments as a dataclass
-        adamw_args: AdamW optimizer arguments as a dataclass
-        save_and_log_args: Model checkpoint and logging arguments as a dataclass
-        validation_freq: Specify how often to validate: After each epoch (value `"epoch"`)
-            or after `validation_freq` iterations (if integer)
-        encoder_config: Encoder configuration data
-        decoder_config: Decoder configuration data
-        pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
-        kl_factor: A normalizing constant by which the KL loss will be multiplied. This has effect
-            only if a VAE is to be trained. Defaults to `1.0`
-        swap_p: Probability of swapping the inputs of the two decoders. Defaults to `0.5`
-        top_rnn_args: Optional. Configuration data for RNN layers on the decoder top. It must be
-            specified if `BertBiRnnVae` is used. This argument will be ignored otherwise.
-        num_transformer2gru: Optional. Number of dense layers connecting the decoder Transformer and
-            RNN layers. It must be specified if `BertBiRnnVae` is used. This argument will be ignored otherwise.
-        num_epochs: Number of ae_training epochs. Defaults to `3`
-        lr_args: Optional. Learning rate scheduler arguments as a dataclass
-        momentum_args: Optional. Momentum scheduler arguments as a dataclass
-        dataset_cache_dir: Optional. A cache directory for loading the `dataset`
-        devices: Optional. GPU devices to use, e.g. `\"GPU:0\", \"GPU:1\"`
-        verbose: `verbose` argument for `model.fit`. Defaults to `2`
+        dev_dataset: The validation dataset.
+        save_and_log_args: Model checkpoint and logging arguments as a dataclass.
+        validation_freq: Specify how often to validate: After each epoch (value `"epoch"`).
+            or after `validation_freq` iterations (if integer).
+        lr_args: Optional. Learning rate scheduler arguments as a dataclass.
+        momentum_args: Optional. Momentum scheduler arguments as a dataclass.
 
     Returns:
-        The training history object
+        A list of callbacks:
+            Checkpoints: This is always included.
+            Learning rate scheduling: Only included if one-cycle learning rate scheduling was chosen.
+            Momentum scheduling: Only included if one-cycle momentum scheduling was chosen.
+            Validation: Only included if validation is expected to be done more frequently
+                than after each epoch. Otherwise, the Keras `fit` method can handle the validation.
+            WandB: Only included if the logging tool is `WandB`.
     """
-    model_type = model_type_map[model_type_name]
-    model_init_kwargs = _get_model_kwargs(
-        model_type=model_type,
-        pooling_type=pooling_type,
-        kl_factor=kl_factor,
-        swap_p=swap_p,
-        rnn_args=top_rnn_args,
-        num_transformer2gru=num_transformer2gru
-    )
-    data_options = tf.data.Options()
-    data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
-    train_dataset, dev_dataset = get_train_and_validation(
-        data_split_paths=dataset_split_paths,
-        train_args=data_stream_args,
-        cache_dir=dataset_cache_dir
-    )
-    if model_type_name in multilingual_models:
-        train_dataset = train_dataset.map(post_batch_feature_pair)
-        dev_dataset = dev_dataset.map(post_batch_feature_pair)
-    train_dataset = train_dataset.with_options(data_options).prefetch(2)
-    dev_dataset = dev_dataset.with_options(data_options).prefetch(2)
     callbacks = [AeCustomCheckpoint(
         checkpoint_root=save_and_log_args.checkpoint_path,
         save_freq=save_and_log_args.save_freq,
@@ -333,9 +294,6 @@ def pretrain_transformer_ae(
             logger=save_and_log_args.log_tool,
             log_freq=validation_freq,
         ))
-        fit_validation_data = None
-    else:
-        fit_validation_data = dev_dataset
     if lr_args is not None:
         lr_scheduler = OneCycleScheduler(
             schedule_args=lr_args,
@@ -365,13 +323,97 @@ def pretrain_transformer_ae(
                 "Please use `WandB` as a logging tool or a custom `Logging.logger` instance "
                 "(the latter may only log messages from custom callbacks). Other logging "
                 "tools such as Tensorboard are currently not supported.")
+    return callbacks
 
-    num_gpus = devices_setup(devices)
-    if num_gpus > 1:
-        strategy = tf.distribute.MirroredStrategy()
-    else:
-        device_to_use = devices[0] if devices is not None else None
-        strategy = tf.distribute.OneDeviceStrategy(device=device_to_use)
+
+def pretrain_transformer_ae(
+        model_type_name: str,
+        dataset_split_paths: DataSplitPathArgs, *,
+        data_stream_args: DataStreamArgs,
+        adamw_args: AdamwArgs,
+        save_and_log_args: SaveAndLogArgs,
+        validation_freq: Union[int, Literal["epoch"]],
+        encoder_config: BertConfig,
+        decoder_config: Union[OpenAIGPTConfig, RnnArgs],
+        pooling_type: PoolingTypes = "cls_sep",
+        kl_factor: float = 1.0,
+        swap_p: float = 0.5,
+        top_rnn_args: Optional[RnnLayerArgs] = None,
+        num_transformer2gru: Optional[int] = None,
+        lr_args: Optional[OneCycleArgs] = None,
+        momentum_args: Optional[OneCycleArgs] = None,
+        dataset_cache_dir: Optional[str] = None,
+        devices: Optional[Sequence[str]] = None,
+        num_epochs: int = 3,
+        verbose: Literal[0, 1, 2] = 2
+) -> History:
+    """Do pre-train
+
+    Args:
+        model_type_name: Model class name as a string.
+        dataset_split_paths: Paths to the dataset splits as a dataclass.
+        data_stream_args: Data streaming arguments as a dataclass.
+        adamw_args: AdamW optimizer arguments as a dataclass.
+        save_and_log_args: Model checkpoint and logging arguments as a dataclass.
+        validation_freq: Specify how often to validate: After each epoch (value `"epoch"`).
+            or after `validation_freq` iterations (if integer).
+        encoder_config: Encoder configuration data.
+        decoder_config: Decoder configuration data.
+        pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`.
+        kl_factor: A normalizing constant by which the KL loss will be multiplied. This has effect
+            only if a VAE is to be trained. Defaults to `1.0`.
+        swap_p: Probability of swapping the inputs of the two decoders. Defaults to `0.5`.
+        top_rnn_args: Optional. Configuration data for RNN layers on the decoder top. It must be
+            specified if `BertBiRnnVae` is used. This argument will be ignored otherwise.
+        num_transformer2gru: Optional. Number of dense layers connecting the decoder Transformer and
+            RNN layers. It must be specified if `BertBiRnnVae` is used. This argument will be ignored otherwise.
+        num_epochs: Number of ae_training epochs. Defaults to `3`.
+        lr_args: Optional. Learning rate scheduler arguments as a dataclass.
+        momentum_args: Optional. Momentum scheduler arguments as a dataclass.
+        dataset_cache_dir: Optional. A cache directory for loading the `dataset`.
+        devices: Optional. GPU devices to use, e.g. `\"GPU:0\", \"GPU:1\"`.
+        verbose: `verbose` argument for `model.fit`. Defaults to `2`.
+
+    Returns:
+        The training history object.
+    """
+    # Configure the model
+    model_type = model_type_map[model_type_name]
+    model_init_kwargs = _get_model_kwargs(
+        model_type=model_type,
+        pooling_type=pooling_type,
+        kl_factor=kl_factor,
+        swap_p=swap_p,
+        rnn_args=top_rnn_args,
+        num_transformer2gru=num_transformer2gru
+    )
+
+    # Configure the data
+    data_options = tf.data.Options()
+    data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+    train_dataset, dev_dataset = get_train_and_validation(
+        data_split_paths=dataset_split_paths,
+        train_args=data_stream_args,
+        cache_dir=dataset_cache_dir
+    )
+    if model_type_name in multilingual_models:
+        train_dataset = train_dataset.map(post_batch_feature_pair)
+        dev_dataset = dev_dataset.map(post_batch_feature_pair)
+    train_dataset = train_dataset.with_options(data_options).prefetch(2)
+    dev_dataset = dev_dataset.with_options(data_options).prefetch(2)
+
+    # Configure the callbacks
+    fit_validation_data = dev_dataset if validation_freq == "epoch" else None
+    callbacks = log_and_schedule_setup(
+        dev_dataset=dev_dataset,
+        save_and_log_args=save_and_log_args,
+        validation_freq=validation_freq,
+        lr_args=lr_args,
+        momentum_args=momentum_args
+    )
+
+    # Configure the training
+    strategy = devices_setup(devices)
     with strategy.scope():
         model = model_type(
             enc_config=encoder_config, dec_config=decoder_config, **model_init_kwargs)
