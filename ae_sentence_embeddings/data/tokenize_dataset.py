@@ -255,7 +255,7 @@ def tokenize_labelled_sequences(
         text_col_names: Sequence[str],
         label_col_name: str,
         max_length: Optional[int] = None,
-        return_token_type_ids=False,
+        return_token_type_ids: bool = False,
         remove_old_cols: bool = False
 ) -> HgfDataset:
     """Tokenized a dataset with labelled text sequences.

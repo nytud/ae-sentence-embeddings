@@ -7,7 +7,7 @@ from datasets import Dataset as HgfDataset
 from transformers import BertTokenizer
 from tokenizers import Tokenizer
 
-from ae_sentence_embeddings.data import tokenize_hgf_dataset
+from ae_sentence_embeddings.data import tokenize_hgf_dataset, tokenize_labelled_sequences
 
 
 class DataTest(tf.test.TestCase):
@@ -92,6 +92,22 @@ class DataTest(tf.test.TestCase):
         self.assertAllEqual(auto_encoding_data_point["input_ids_en"], translation_data_point["input_ids_hu"])
         self.assertAllEqual(
             auto_encoding_data_point["attention_mask_en"], translation_data_point["attention_mask_hu"])
+
+    def test_tokenize_labelled_sequences(self) -> None:
+        """Test the tokenization of labelled sequences."""
+        label_col_name = "label"
+        expected_cols = (label_col_name, "input_ids", "attention_mask")
+        self.data_mono[label_col_name] = [0, 1, 1, 0]
+        tokenized_dataset = tokenize_labelled_sequences(
+            dataset=HgfDataset.from_dict(self.data_mono),
+            tokenizer=self.bert_tokenizer,
+            text_col_names=("text",),
+            label_col_name=label_col_name,
+            max_length=128,
+            remove_old_cols=True
+        )
+        print(f"An example from the dataset:\n{tokenized_dataset[0]}")
+        self.assertAllEqual(expected_cols, tuple(tokenized_dataset.features.keys()))
 
 
 if __name__ == "__main__":
