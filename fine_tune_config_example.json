@@ -1,0 +1,41 @@
+{
+    "data_split_path_args": {
+        "train_path": "train.jsonl",
+        "dev_path": "dev.jsonl"
+    },
+    "data_stream_args": {
+        "input_padding": [0, 0],
+        "target_padding": [0],
+        "batch_size": 32,
+        "num_buckets": 3,
+        "first_bucket_boundary": 33,
+        "shuffling_buffer_size": 512
+    },
+    "adamw_args": {
+        "weight_decay": 5e-5,
+        "amsgrad": 1
+    },
+    "one_cycle_args": {
+        "lr_initial_rate": 1e-5,
+        "lr_total_steps": 10000,
+        "lr_half_cycle": 500,
+        "lr_cycle_extremum": 1e-4,
+        "lr_end_extremum": 1e-8,
+        "momentum_initial_rate": 0.95,
+        "momentum_total_steps": 10000,
+        "momentum_half_cycle": 500,
+        "momentum_cycle_extremum": 0.85
+    },
+    "save_and_log_args": {
+        "checkpoint_path": "checkpoints",
+        "log_tool": "WandB",
+        "save_freq": "epoch",
+        "log_update_freq": 1000
+    },
+    "model_ckpt": "ckpt",
+    "num_labels": 2,
+    "num_epochs": 3,
+    "dataset_cache_dir": ".cache",
+    "validation_freq": "epoch",
+    "devices": ["GPU:0", "GPU:1"]
+}
