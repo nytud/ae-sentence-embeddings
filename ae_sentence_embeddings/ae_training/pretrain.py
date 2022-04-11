@@ -10,6 +10,7 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import History
 from tensorflow_addons.optimizers import AdamW
 from transformers import BertConfig, OpenAIGPTConfig
+import wandb
 from wandb.keras import WandbCallback
 
 from ae_sentence_embeddings.ae_training.model_type_config import (
@@ -35,6 +36,7 @@ from ae_sentence_embeddings.callbacks import (
 )
 from ae_sentence_embeddings.data import get_train_and_validation, post_batch_feature_pair
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
+from ae_sentence_embeddings.modeling_tools import get_training_args, read_json
 
 PoolingTypes = Literal["average", "cls_sep"]
 
@@ -430,3 +432,13 @@ def pretrain_transformer_ae(
         verbose=verbose
     )
     return history
+
+
+def collect_wandb_args() -> Dict[str, Any]:
+    """Create a WandB configuration dict from a configuration file"""
+    parser = get_training_args()
+    parser.add_argument("--project", help="Optional. Name of the current WandB project.")
+    args = parser.parse_args()
+    arg_dict = flatten_nested_dict(read_json(args.config_file))
+    wandb.init(project=args.project, config=arg_dict)
+    return wandb.config

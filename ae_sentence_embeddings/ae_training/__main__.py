@@ -1,25 +1,19 @@
-"""Tune hyperparameters or run full pre-training"""
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-import wandb
+"""Run full pre-training"""
 
-from ae_sentence_embeddings.modeling_tools import get_training_args, read_json
 from ae_sentence_embeddings.ae_training.pretrain import (
     pretrain_transformer_ae,
     group_train_args_from_flat,
     group_model_args_from_flat,
-    flatten_nested_dict
+    collect_wandb_args
 )
 
 
 def main() -> None:
     """Main function"""
-    parser = get_training_args()
-    parser.add_argument("--project", help="Optional. Name of the current WandB project.")
-    args = parser.parse_args()
-    arg_dict = flatten_nested_dict(read_json(args.config_file))
-    wandb.init(project=args.project, config=arg_dict)
-    config = wandb.config
-
+    config = collect_wandb_args()
     train_args = group_train_args_from_flat(config)
     model_configs = group_model_args_from_flat(config)
     pretrain_transformer_ae(
