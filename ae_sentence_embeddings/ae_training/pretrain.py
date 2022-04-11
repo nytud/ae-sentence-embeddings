@@ -227,7 +227,7 @@ def flatten_nested_dict(nested_data: Dict[str, Any]) -> Dict[str, Any]:
     return flattened_dict
 
 
-def _get_model_kwargs(
+def get_model_kwargs(
         model_type: type,
         pooling_type: PoolingTypes,
         kl_factor: float,
@@ -384,7 +384,7 @@ def pretrain_transformer_ae(
     """
     # Configure the model
     model_type = model_type_map[model_type_name]
-    model_init_kwargs = _get_model_kwargs(
+    model_init_kwargs = get_model_kwargs(
         model_type=model_type,
         pooling_type=pooling_type,
         kl_factor=kl_factor,
