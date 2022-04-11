@@ -29,13 +29,18 @@ def convert_to_tf_dataset(dataset: HgfDataset) -> TFDataset:
     target_names = ("target", "label")
     target_cols = sorted((col for col in dataset.features.keys() if col.startswith(target_names)),
                          reverse=True)
-    feature_cols = sorted([feature_col for feature_col in dataset.features.keys()
-                           if feature_col not in target_cols and not feature_col.startswith("text")],
+    feature_cols = sorted((feature_col for feature_col in dataset.features.keys()
+                           if feature_col not in target_cols and not feature_col.startswith("text")),
                           reverse=True)
     feature_spec = (tf.TensorSpec(shape=(None,), dtype=tf.int32),) * len(feature_cols)
 
     if len(target_cols) == 1:
-        target_spec = tf.TensorSpec(shape=(None,), dtype=tf.int32)
+        # We take an example from the dataset and check if the target is a scalar.
+        data_point = dataset[0][target_cols[0]]
+        is_scalar = isinstance(data_point, (int, float, str)) \
+            or isinstance(data_point, tf.Tensor) and data_point.shape == ()
+        target_shape = () if is_scalar else (None,)
+        target_spec = tf.TensorSpec(shape=target_shape, dtype=tf.int32)
         out_spec = (feature_spec, target_spec)
 
         def data_gen() -> Generator[Tuple[Tuple[tf.Tensor, ...], tf.Tensor], None, None]:
@@ -183,7 +188,7 @@ def post_batch_feature_pair(
     pairs = []
     num_features = len(feature_tensors) // num_languages
     for i in range(num_features):
-        pair = (feature_tensors[i], feature_tensors[i+num_features])
+        pair = (feature_tensors[i], feature_tensors[i + num_features])
         pairs.append(pair)
     return tuple(pairs), target_tensors
 
