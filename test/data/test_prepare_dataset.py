@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
+
 """Test TensorFlow dataset creation"""
 
-from typing import Generator, Tuple, List, Union, Any
+from typing import Generator, Tuple, List, Union
 from copy import deepcopy
 from types import MappingProxyType
 from functools import partial
@@ -41,6 +43,7 @@ def _create_data_batches(data_size: Union[List[int], Tuple[int, ...]],
     for i, seq_end_vec in enumerate(seq_end_ids):
         batch = [data_block[i, row, :to_col].tolist() for row, to_col in enumerate(seq_end_vec)]
         outputs.append(batch)
+    # noinspection PyTypeChecker
     return outputs
 
 
@@ -124,7 +127,8 @@ class TFDatasetTest(tf.test.TestCase):
     def test_convert_to_tf_dataset(self) -> None:
         """Test conversion of a `datasets.Dataset` object to a TensorFlow dataset"""
         for data in (self.mono_data, self.bi_data):
-            dataset = HgfDataset.from_dict(data)
+            # noinspection PyTypeChecker
+            dataset = HgfDataset.from_dict(data)  # `from_dict` work correctly with `MappingProxyType`
             tf_dataset = convert_to_tf_dataset(dataset)
             example = next(iter(tf_dataset))
             print(f"A data point is: {example}")

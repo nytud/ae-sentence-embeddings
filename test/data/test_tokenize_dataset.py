@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """Test dataset tokenization"""
 
 from typing import Dict, Any, Iterable, Union

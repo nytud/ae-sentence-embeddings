@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """Test custom pooling layers"""
 
 import tensorflow as tf

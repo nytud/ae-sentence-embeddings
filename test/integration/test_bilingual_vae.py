@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """Test a bilingual Transformer-RNN VAE
 This includes testing model calling, logging and model saving
 """

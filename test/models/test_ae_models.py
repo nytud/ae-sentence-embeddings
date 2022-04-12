@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """A module for AE model unittest"""
 
 import tensorflow as tf

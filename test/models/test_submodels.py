@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """Test encoder or decoder modules"""
 
 import tensorflow as tf

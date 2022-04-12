@@ -88,11 +88,12 @@ def devices_setup(
         A distribution strategy: `MirroredStrategy` is multiple GPUs
         are available or `OneDeviceStrategy` otherwise.
     """
-    if devices is None:
-        num_gpus = len(tf.config.get_visible_devices("GPU"))
-    else:
+    num_gpus = len(tf.config.get_visible_devices("GPU"))
+    if devices is not None:
         gpus = [device for device in devices if device.lower().startswith(("gpu", "/gpu"))]
-        num_gpus = len(gpus)
+        num_requested_gpus = len(gpus)
+        assert num_requested_gpus <= num_gpus, f"{num_gpus} GPUs are available, requested {num_requested_gpus}."
+        num_gpus = num_requested_gpus
         if num_gpus != 0:
             gpus = ",".join(gpu[-1] for gpu in gpus)
             environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -100,7 +101,7 @@ def devices_setup(
     if num_gpus > 1:
         strategy = tf.distribute.MirroredStrategy()
     else:
-        device_to_use = devices[0] if devices is not None else None
+        device_to_use = devices[0] if devices is not None else "/cpu:0"
         strategy = tf.distribute.OneDeviceStrategy(device=device_to_use)
     return strategy
 

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """Test layers designed for bilingual training"""
 
 from typing import Tuple

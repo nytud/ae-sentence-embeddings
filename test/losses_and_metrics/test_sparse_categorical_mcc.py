@@ -22,3 +22,7 @@ class TestSparseCategoricalMCC(tf.test.TestCase):
         metric.update_state(y_true, y_pred)
         result = metric.result().numpy().astype(float)
         self.assertAllClose(expected_result, result)
+
+
+if __name__ == "__main__":
+    tf.test.main()

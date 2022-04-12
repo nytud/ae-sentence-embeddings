@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """A module for testing modeling tools"""
 
 import tensorflow as tf

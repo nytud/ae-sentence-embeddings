@@ -16,7 +16,7 @@ from ae_sentence_embeddings.argument_handling import (
 
 # A path to an existing file must be specified, but it will not be used
 DUMMY_FILE = os_path_join(dirname(dirname(dirname(abspath(__file__)))),
-                          "config_example.json")
+                          "config_examples", "config_example.json")
 
 
 class ArgProcessingTest(unittest.TestCase):

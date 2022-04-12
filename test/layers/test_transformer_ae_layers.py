@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """Test layers connected to a Transformer architecture"""
 
 import tensorflow as tf

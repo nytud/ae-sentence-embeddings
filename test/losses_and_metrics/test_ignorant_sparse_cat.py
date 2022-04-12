@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """Test sparse categorical crossentropy loss with mask labels"""
 
 import numpy as np

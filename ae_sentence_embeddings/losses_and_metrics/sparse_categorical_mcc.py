@@ -13,12 +13,12 @@ class SparseCategoricalMCC(MCCoefficient):
     with scalar `y_true` labels.
     """
 
-    def __init__(self, num_classes: int, name: str = "SparseCategoricalMCC", **kwargs) -> None:
+    def __init__(self, num_classes: int, name: str = "sparse_categorical_mcc", **kwargs) -> None:
         """Initialize the metric.
 
         Args:
             num_classes: Number of classes (or labels).
-            name: Name of the metric instance. Defaults to `'SparseCategoricalMCC'`.
+            name: Name of the metric instance. Defaults to `'sparse_categorical_mcc'`.
             **kwargs: Parent class keyword arguments.
         """
         if num_classes <= 0:
@@ -38,7 +38,7 @@ class SparseCategoricalMCC(MCCoefficient):
             y_pred: The predictions, a float tensor of shape `(batch_size, num_classes)`.
             sample_weight: Optional. Weights of the data points.
         """
+        y_true = tf.squeeze(y_true)
         y_true = tf.ensure_shape(y_true, (None,))
         y_true = tf.one_hot(y_true, depth=self.num_classes, dtype=y_pred.dtype)
-        print(y_true)
         super().update_state(y_true, y_pred, sample_weight=sample_weight)
