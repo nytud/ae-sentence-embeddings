@@ -9,7 +9,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
 from tensorflow.keras.metrics import SparseCategoricalAccuracy
 from tensorflow_addons.optimizers import AdamW
-from tensorflow_addons.metrics import MatthewsCorrelationCoefficient as MCCoefficient
+from ae_sentence_embeddings.losses_and_metrics import SparseCategoricalMCC
 from transformers import (
     TFAutoModel,
     TFAutoModelForTokenClassification,
@@ -132,7 +132,7 @@ def fine_tune(
         else:
             model = load_model(model_ckpt)
         optimizer = AdamW(**adamw_args.to_dict())
-        metric = MCCoefficient(num_classes=num_labels) if use_mcc else SparseCategoricalAccuracy()
+        metric = SparseCategoricalMCC(num_classes=num_labels) if use_mcc else SparseCategoricalAccuracy()
         model.compile(optimizer=optimizer, loss=SparseCategoricalCrossentropy(from_logits=True),
                       metrics=[metric])
     history = model.fit(

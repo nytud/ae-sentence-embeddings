@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """Define loss functions that can ignore a specific label"""
 
 from typing import Dict, Any, Literal

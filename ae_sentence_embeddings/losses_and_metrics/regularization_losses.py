@@ -1,4 +1,7 @@
+# -*- coding: utf-8 -*-
+
 """A module for regularization losses such as KL-divergence"""
+
 import tensorflow as tf
 
 

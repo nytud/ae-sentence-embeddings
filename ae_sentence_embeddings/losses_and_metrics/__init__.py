@@ -3,3 +3,4 @@ from .ignorant_sparse_cat import (
     IgnorantSparseCatAccuracy
 )
 from .regularization_losses import kl_loss_func
+from .sparse_categorical_mcc import SparseCategoricalMCC
