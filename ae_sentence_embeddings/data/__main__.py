@@ -7,7 +7,7 @@ from argparse import Namespace, ArgumentParser
 from warnings import warn
 
 from datasets import load_dataset
-from transformers import BertTokenizer
+from transformers import PreTrainedTokenizerFast, PreTrainedTokenizer
 from tokenizers import Tokenizer
 
 from ae_sentence_embeddings.data import tokenize_hgf_dataset, tokenize_labelled_sequences
@@ -56,7 +56,7 @@ def main() -> None:
 
     if isinstance(tokenizer := args.tokenizer, Tokenizer):
         tokenizer.enable_truncation(max_length=args.max_length)
-    elif isinstance(tokenizer, BertTokenizer):
+    elif isinstance(tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast)):
         tokenizer.model_max_length = args.max_length
     else:
         warn(f"Setting maximum sequence length for {type(tokenizer)} has not been implemented yet!")
