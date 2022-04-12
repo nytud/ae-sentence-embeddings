@@ -438,7 +438,8 @@ def collect_wandb_args() -> Dict[str, Any]:
     """Create a WandB configuration dict from a configuration file"""
     parser = get_training_args()
     parser.add_argument("--project", help="Optional. Name of the current WandB project.")
+    parser.add_argument("--run-name", dest="run_name", help="Optional. Name of the current run.")
     args = parser.parse_args()
     arg_dict = flatten_nested_dict(read_json(args.config_file))
-    wandb.init(project=args.project, config=arg_dict)
+    wandb.init(project=args.project, name=args.run_name, config=arg_dict)
     return wandb.config
