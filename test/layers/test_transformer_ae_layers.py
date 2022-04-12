@@ -21,6 +21,7 @@ class AeTransformerTest(tf.test.TestCase):
         embedding_args = RegularizedEmbeddingArgs(vocab_size=32, hidden_size=8)
         embedding_layer = RegularizedEmbedding(embedding_args)
         expected_shape = (2, 6, 8)
+        # noinspection PyCallingNonCallable
         res = embedding_layer(self.dummy_input)
         self.assertAllEqual(expected_shape, tf.shape(res), msg=f"The result is:\n{res}")
 
@@ -33,6 +34,7 @@ class AeTransformerTest(tf.test.TestCase):
         )
         embedding_layer = SinusoidalEmbedding(embedding_args)
         expected_shape = (2, 6, 8)
+        # noinspection PyCallingNonCallable
         res = embedding_layer(self.dummy_input)
         self.assertAllEqual(expected_shape, tf.shape(res), msg=f"The result is:\n{res}")
 

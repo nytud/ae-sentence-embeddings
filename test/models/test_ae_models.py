@@ -38,6 +38,7 @@ class TransformerVaeTest(tf.test.TestCase):
 
     def test_model_transformer_vae_call(self) -> None:
         expected_shape = (2, 8, 30)
+        # noinspection PyCallingNonCallable
         logits = self.model((self.input_ids, self.attn_mask), training=False)
         print(f"The resulting logits are: {logits}")
         self.assertEqual(expected_shape, logits.shape)

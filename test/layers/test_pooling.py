@@ -22,6 +22,7 @@ class PoolingTest(tf.test.TestCase):
     def test_cls_plus_sep(self) -> None:
         """Test CLS + SEP pooling"""
         expected_output = tf.constant([[1]*6 + [4]*6, [1]*6 + [3]*6], dtype=tf.float32)
+        # noinspection PyCallingNonCallable
         layer_output = CLSPlusSEPPooling()((self.hidden_states, self.attn_mask))
         print(f"The expected CLS + SEP output is:\n{expected_output}")
         print(f"The evaluated CLS + SEP output is:\n{layer_output}")

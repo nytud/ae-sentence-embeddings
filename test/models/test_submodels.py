@@ -26,6 +26,7 @@ class SubmodelTest(tf.test.TestCase):
             vocab_size=vocab_size
         )
         model = SentAeGRUDecoder(config)
+        # noinspection PyCallingNonCallable
         result = model((dummy_sent_embedding, dummy_ids))
         self.assertAllEqual((batch_size, sequence_length, vocab_size), result.shape,
                             msg=f"The RNN output is of shape:\n{result.shape}")

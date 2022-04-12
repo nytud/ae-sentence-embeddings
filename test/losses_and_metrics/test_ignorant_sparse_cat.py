@@ -24,6 +24,7 @@ class IgnorantSparseCatTest(tf.test.TestCase):
     def test_ignorant_sparse_cat_crossentropy(self) -> None:
         """Test IgnorantSparseCatCrossentropy"""
         loss_func = IgnorantSparseCatCrossentropy(from_logits=True)
+        # noinspection PyCallingNonCallable
         loss_val = loss_func(self.labels, self.logits)
         self.assertShapeEqual(np.array(1.), loss_val, msg=f"Loss value is {loss_val}")
 

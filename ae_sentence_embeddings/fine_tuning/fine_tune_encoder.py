@@ -132,9 +132,11 @@ def fine_tune(
         else:
             model = load_model(model_ckpt)
         optimizer = AdamW(**adamw_args.to_dict())
-        metric = SparseCategoricalMCC(num_classes=num_labels) if use_mcc else SparseCategoricalAccuracy()
+        metrics = [SparseCategoricalAccuracy()]
+        if use_mcc:
+            metrics.append(SparseCategoricalMCC(num_classes=num_labels))
         model.compile(optimizer=optimizer, loss=SparseCategoricalCrossentropy(from_logits=True),
-                      metrics=[metric])
+                      metrics=metrics)
     history = model.fit(
         x=train_dataset,
         epochs=num_epochs,
