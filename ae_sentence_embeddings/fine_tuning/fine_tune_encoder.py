@@ -7,9 +7,14 @@ from typing import Optional, Union, Sequence, Literal
 from tensorflow.keras.callbacks import History
 from tensorflow.keras.models import load_model
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
-from tensorflow.keras.metrics import Accuracy
+from tensorflow.keras.metrics import SparseCategoricalAccuracy
 from tensorflow_addons.optimizers import AdamW
 from tensorflow_addons.metrics import MatthewsCorrelationCoefficient as MCCoefficient
+from transformers import (
+    TFAutoModel,
+    TFAutoModelForTokenClassification,
+    TFAutoModelForSequenceClassification
+)
 
 from ae_sentence_embeddings.data import get_train_and_validation
 from ae_sentence_embeddings.ae_training import devices_setup, log_and_schedule_setup
@@ -20,6 +25,25 @@ from ae_sentence_embeddings.argument_handling import (
     DataSplitPathArgs,
     OneCycleArgs
 )
+
+TransformerTypes = Union[TFAutoModel, TFAutoModelForTokenClassification, TFAutoModelForTokenClassification]
+transformers_type_dict = {
+    "Model": TFAutoModel,
+    "SequenceClassification": TFAutoModelForSequenceClassification,
+    "TokenClassification": TFAutoModelForTokenClassification
+}
+
+
+def lookup_transformer_type(
+        transformer_type: Literal["Model", "SequenceClassification", "TokenClassification"]
+) -> TransformerTypes:
+    """Get the `transformers` architecture indicated by a string."""
+    try:
+        transformer_auto_type = transformers_type_dict[transformer_type]
+    except KeyError:
+        raise NotImplementedError(f"Unrecognized model type: {transformer_type}. "
+                                  f"Please specify one of {list(transformers_type_dict.keys())}")
+    return transformer_auto_type
 
 
 def fine_tune(
@@ -54,8 +78,9 @@ def fine_tune(
         save_and_log_args: Model checkpoint and logging arguments as a dataclass.
         validation_freq: Specify how often to validate: After each epoch (value `"epoch"`).
             or after `validation_freq` iterations (if integer).
-        model_type: Optional. Path to a model checkpoint. If it is specified, the model
-            weights will be loaded from the checkpoint before fine-tuning.
+        model_type: Optional. The name of a `transformers` model type, i.e. `'TFBertModel'`.
+            If it is not specified, a Keras-serialized model checkpoint is expected as the
+            `model_ckpt` argument.
         lr_args: Optional. Learning rate scheduler arguments as a dataclass.
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
         dataset_cache_dir: Optional. A cache directory for loading the `dataset`.
@@ -75,7 +100,7 @@ def fine_tune(
     if not is_transformers_model and model_type is not None:
         raise TypeError(f"You have specified the model type {model_type.__name__} which does not have "
                         "a `from_pretrained` method. If you have such a model class, please leave the "
-                        "`model_type` arguments unspecified and pass the checkpoint of a Keras "
+                        "`model_type` argument unspecified and pass the checkpoint of a Keras "
                         "serializable model to `model_ckpt`.")
 
     # Configure the data
@@ -107,7 +132,7 @@ def fine_tune(
         else:
             model = load_model(model_ckpt)
         optimizer = AdamW(**adamw_args.to_dict())
-        metric = MCCoefficient(num_classes=num_labels) if use_mcc else Accuracy()
+        metric = MCCoefficient(num_classes=num_labels) if use_mcc else SparseCategoricalAccuracy()
         model.compile(optimizer=optimizer, loss=SparseCategoricalCrossentropy(from_logits=True),
                       metrics=[metric])
     history = model.fit(

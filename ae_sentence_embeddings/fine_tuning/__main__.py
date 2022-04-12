@@ -3,23 +3,27 @@
 
 """Tune hyperparameters or run fine-tuning"""
 
-from ae_sentence_embeddings.fine_tuning import fine_tune
+from ae_sentence_embeddings.fine_tuning.fine_tune_encoder import fine_tune, lookup_transformer_type
 from ae_sentence_embeddings.ae_training.pretrain import (
     collect_wandb_args,
     group_train_args_from_flat
 )
-from ae_sentence_embeddings.argument_handling import check_if_positive_int, check_if_dir
+from ae_sentence_embeddings.argument_handling import check_if_positive_int
 
 
 def main() -> None:
     """Main function"""
     config = collect_wandb_args()
     train_args = group_train_args_from_flat(config)
-    model_ckpt = check_if_dir(config["model_ckpt"])
+    model_ckpt = config["model_ckpt"]
     num_labels = check_if_positive_int(config["num_labels"])
+    model_type = config.get("model_type")
+    if model_type is not None:
+        model_type = lookup_transformer_type(model_type)
     fine_tune(
         model_ckpt=model_ckpt,
         num_labels=num_labels,
+        model_type=model_type,
         dataset_split_paths=train_args.data_split_path_args,
         data_stream_args=train_args.data_stream_args,
         adamw_args=train_args.adamw_args,

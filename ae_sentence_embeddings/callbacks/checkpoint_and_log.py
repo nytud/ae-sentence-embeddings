@@ -44,7 +44,10 @@ class AeCustomCheckpoint(Callback):
         weight_dir = os_path_join(subdir_path, f"weight_{subdir_name}.ckpt")
         optimizer_dir = os_path_join(subdir_path, f"optim_{subdir_name}.pkl") \
             if self.save_optimizer else None
-        self.model.checkpoint(weight_path=weight_dir, optimizer_path=optimizer_dir)
+        if hasattr(self.model, "checkpoint"):
+            self.model.checkpoint(weight_path=weight_dir, optimizer_path=optimizer_dir)
+        else:
+            self.model.save(weight_dir, include_optimizer=self.save_optimizer)
 
     def on_epoch_end(self, epoch: int, logs=None) -> None:
         """Save model if `save_freq == "epoch"`"""
