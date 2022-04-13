@@ -6,8 +6,9 @@ ENV PATH="${PATH}:/root/.poetry/bin"
 COPY . /opt/ae-sentence-embeddings
 WORKDIR /opt/ae-sentence-embeddings
 
-RUN poetry build && \
+RUN poetry config virtualenvs.in-project true && \
+    poetry build && \
     poetry install
 
-RUN chmod +x docker/entrypoint.sh
+RUN chmod 775 docker/entrypoint.sh
 ENTRYPOINT ["./docker/entrypoint.sh"]
