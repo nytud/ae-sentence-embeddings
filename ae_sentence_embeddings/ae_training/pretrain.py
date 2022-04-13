@@ -329,6 +329,55 @@ def log_and_schedule_setup(
     return callbacks
 
 
+def _check_cycling_total_steps(arg_dict: Dict[str, Any]) -> None:
+    """Helper function to check that the number of 1cycle scheduler total steps
+    is the same for the learning rate and the optimizer.
+
+    Args:
+        arg_dict: The flat dictionary that contains all hyperparameters.
+            The function will add one key-vale pair to the dictionary if only
+            `one_cycle_args_lr_total_steps` or `one_cycle_args_momentum_total_steps`
+            is specified.
+    """
+    one_cycle_prefix = _underscored_snake_from_camel(OneCycleArgs)
+    lr_total_steps_name = one_cycle_prefix + "lr_total_steps"
+    momentum_total_steps_name = one_cycle_prefix + "momentum_total_steps"
+    lr_total_steps = arg_dict.get(lr_total_steps_name)
+    momentum_total_steps = arg_dict.get(momentum_total_steps_name)
+    if all((lr_total_steps, momentum_total_steps)) and lr_total_steps != momentum_total_steps:
+        raise ValueError(f"You have specified both learning rate cycling total steps ({lr_total_steps}) "
+                         f"and momentum cycling total steps ({momentum_total_steps}) but they are not "
+                         f"equal. Please specify only one of them or set them equal.")
+    total_steps = lr_total_steps or momentum_total_steps
+    arg_dict[lr_total_steps_name] = total_steps
+    arg_dict[momentum_total_steps_name] = total_steps
+
+
+def collect_wandb_args() -> Dict[str, Any]:
+    """Create a WandB configuration dict from a configuration file.
+
+    Returns:
+        The `WandB` configuration dict.
+    """
+    parser = get_training_args()
+    parser.add_argument("--project", help="Optional. Name of the current WandB project.")
+    parser.add_argument("--run-name", dest="run_name", help="Optional. Name of the current run.")
+    args = parser.parse_args()
+    arg_dict = flatten_nested_dict(read_json(args.config_file))
+    _check_cycling_total_steps(arg_dict)
+    wandb.init(project=args.project, name=args.run_name, config=arg_dict)
+    config = wandb.config
+    # `momentum_half_cycle` may be unspecified. If, however, `lr_half_cycle` is specified,
+    # they will be set equal. This makes sense as one usually wants to cycle learning rate
+    # and momentum through the same number of iterations.
+    one_cycle_prefix = _underscored_snake_from_camel(OneCycleArgs)
+    lr_half_cycle = config.get(one_cycle_prefix + "lr_half_cycle")
+    momentum_half_cycle = config.get(one_cycle_prefix + "momentum_half_cycle")
+    if lr_half_cycle is not None and momentum_half_cycle is None:
+        config[one_cycle_prefix + "momentum_half_cycle"] = lr_half_cycle
+    return config
+
+
 def pretrain_transformer_ae(
         model_type_name: str,
         dataset_split_paths: DataSplitPathArgs, *,
@@ -433,27 +482,3 @@ def pretrain_transformer_ae(
         verbose=verbose
     )
     return history
-
-
-def collect_wandb_args() -> Dict[str, Any]:
-    """Create a WandB configuration dict from a configuration file.
-
-    Returns:
-        The `WandB` configuration dict.
-    """
-    parser = get_training_args()
-    parser.add_argument("--project", help="Optional. Name of the current WandB project.")
-    parser.add_argument("--run-name", dest="run_name", help="Optional. Name of the current run.")
-    args = parser.parse_args()
-    arg_dict = flatten_nested_dict(read_json(args.config_file))
-    wandb.init(project=args.project, name=args.run_name, config=arg_dict)
-    config = wandb.config
-    # `momentum_half_cycle` may be unspecified. If, however, `lr_half_cycle` is specified,
-    # they will be set equal. This makes sense as one usually wants to cycle learning rate
-    # and momentum through the same number of iterations.
-    one_cycle_prefix = _underscored_snake_from_camel(OneCycleArgs)
-    lr_half_cycle = config.get(one_cycle_prefix + "lr_half_cycle")
-    momentum_half_cycle = config.get(one_cycle_prefix + "momentum_half_cycle")
-    if lr_half_cycle is not None and momentum_half_cycle is None:
-        config[one_cycle_prefix + "momentum_half_cycle"] = lr_half_cycle
-    return config

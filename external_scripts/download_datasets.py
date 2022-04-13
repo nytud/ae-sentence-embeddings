@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """Download and save a dataset from the Hugging Face hub"""

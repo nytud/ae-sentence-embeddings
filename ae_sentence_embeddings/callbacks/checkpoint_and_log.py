@@ -1,6 +1,7 @@
 """A module for checkpoint and logging callbacks"""
 
-from os.path import join as os_path_join
+from os import mkdir
+from os.path import join as os_path_join, exists
 from time import strftime
 from typing import List, Union, Literal, Dict, Any
 from logging import Logger
@@ -22,6 +23,7 @@ class AeCustomCheckpoint(Callback):
 
         Args:
             checkpoint_root: Path to a root directory where all checkpoints will be saved.
+                If it does not exist, it will be created.
             save_freq: Saving frequency that specifies how often the model should be saved.
                 If `epoch`, the model will be saved after each epoch. Otherwise, it will be
                 saved after every `save_freq` iteration.
@@ -29,6 +31,8 @@ class AeCustomCheckpoint(Callback):
                 will be saved. Defaults to `True`.
         """
         super().__init__()
+        if not exists(checkpoint_root):
+            mkdir(checkpoint_root)
         self.checkpoint_root = os_path_join(checkpoint_root, strftime("run_%Y_%m_%d-%H_%M_%S"))
         self.save_freq = save_freq
         self.save_optimizer = save_optimizer

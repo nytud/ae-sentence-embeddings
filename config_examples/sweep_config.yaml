@@ -1,4 +1,4 @@
-program: /home/nyekibence/PycharmProjects/ae-sentence-embeddings/ae_sentence_embeddings/fine_tuning/__main__.py
+program: ae_sentence_embeddings/fine_tuning/__main__.py
 method: bayes
 name: bert_cola_hp_tuning
 description: Fine-tune BERT on the COLA dataset
@@ -19,5 +19,5 @@ command:
   - ${env}
   - ${interpreter}
   - ${program}
-  - "/home/nyekibence/PycharmProjects/ae-sentence-embeddings/run/fine_tune_config.json"
+  - "fine_tune_config.json"
 project: sent_encoder_fine_tuning
