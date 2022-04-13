@@ -1,0 +1,23 @@
+program: /home/nyekibence/PycharmProjects/ae-sentence-embeddings/ae_sentence_embeddings/fine_tuning/__main__.py
+method: bayes
+name: bert_cola_hp_tuning
+description: Fine-tune BERT on the COLA dataset
+metric:
+  name: dev_sparse_categorical_mcc
+  goal: maximize
+parameters:
+  adamw_args_weight_decay:
+    min: 0.0000001
+    max: 0.00001
+  one_cycle_args_lr_half_cycle:
+    min: 40
+    max: 50
+early_terminate:
+  type: hyperband
+  min_iter: 5
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "/home/nyekibence/PycharmProjects/ae-sentence-embeddings/run/fine_tune_config.json"
+project: sent_encoder_fine_tuning

@@ -21,15 +21,15 @@ class AeCustomCheckpoint(Callback):
         """Initialize the callback.
 
         Args:
-            checkpoint_root: Path to a root directory where all checkpoints will be saved
+            checkpoint_root: Path to a root directory where all checkpoints will be saved.
             save_freq: Saving frequency that specifies how often the model should be saved.
                 If `epoch`, the model will be saved after each epoch. Otherwise, it will be
-                saved after every `save_freq` iteration
+                saved after every `save_freq` iteration.
             save_optimizer: If `True`, not only the model weights but also the optimizer states
-                will be saved. Defaults to `True`
+                will be saved. Defaults to `True`.
         """
         super().__init__()
-        self.checkpoint_root = checkpoint_root
+        self.checkpoint_root = os_path_join(checkpoint_root, strftime("run_%Y_%m_%d-%H_%M_%S"))
         self.save_freq = save_freq
         self.save_optimizer = save_optimizer
         self.batch_id = 0

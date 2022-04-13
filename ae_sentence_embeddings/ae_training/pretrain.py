@@ -47,8 +47,8 @@ class GroupedArgs:
     data_split_path_args: DataSplitPathArgs
     data_stream_args: DataStreamArgs
     adamw_args: AdamwArgs
-    lr_one_cycle_args: OneCycleArgs
-    momentum_one_cycle_args: OneCycleArgs
+    lr_one_cycle_args: Optional[OneCycleArgs]
+    momentum_one_cycle_args: Optional[OneCycleArgs]
     save_and_log_args: SaveAndLogArgs
 
 
@@ -436,11 +436,24 @@ def pretrain_transformer_ae(
 
 
 def collect_wandb_args() -> Dict[str, Any]:
-    """Create a WandB configuration dict from a configuration file"""
+    """Create a WandB configuration dict from a configuration file.
+
+    Returns:
+        The `WandB` configuration dict.
+    """
     parser = get_training_args()
     parser.add_argument("--project", help="Optional. Name of the current WandB project.")
     parser.add_argument("--run-name", dest="run_name", help="Optional. Name of the current run.")
     args = parser.parse_args()
     arg_dict = flatten_nested_dict(read_json(args.config_file))
     wandb.init(project=args.project, name=args.run_name, config=arg_dict)
-    return wandb.config
+    config = wandb.config
+    # `momentum_half_cycle` may be unspecified. If, however, `lr_half_cycle` is specified,
+    # they will be set equal. This makes sense as one usually wants to cycle learning rate
+    # and momentum through the same number of iterations.
+    one_cycle_prefix = _underscored_snake_from_camel(OneCycleArgs)
+    lr_half_cycle = config.get(one_cycle_prefix + "lr_half_cycle")
+    momentum_half_cycle = config.get(one_cycle_prefix + "momentum_half_cycle")
+    if lr_half_cycle is not None and momentum_half_cycle is None:
+        config[one_cycle_prefix + "momentum_half_cycle"] = lr_half_cycle
+    return config
