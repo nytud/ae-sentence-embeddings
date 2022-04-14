@@ -225,7 +225,8 @@ class AdamwArgs(DeeplArgs):
         """
         self.amsgrad = bool(self.amsgrad)
         self.learning_rate = check_lr_interval(self.learning_rate)
-        self.weight_decay = check_lr_interval(self.weight_decay)
+        self.weight_decay = check_if_float_in_interval(
+            self.weight_decay, interval=(0., 1.), interval_type="closed")
         self.beta_1 = check_lr_interval(self.beta_1)
         self.beta_2 = check_lr_interval(self.beta_2)
 
