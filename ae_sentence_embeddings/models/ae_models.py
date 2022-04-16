@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """A module for defining Transformer-based AEs"""
 
 # Note that does not often recognize whether that Keras layer or model is callable.
@@ -135,14 +137,14 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
     def __init__(self, enc_config: BertConfig, dec_config: Union[OpenAIGPTConfig, RnnArgs],
                  pooling_type: Literal["cls_sep", "average"] = "cls_sep",
                  kl_factor: float = 1.0, **kwargs) -> None:
-        """Initialize the VAE
+        """Initialize the VAE.
 
         Args:
-            enc_config: The encoder configuration object
-            dec_config: The decoder configuration object
-            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
-            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`
-            **kwargs: Keyword arguments for the `keras.Model` class
+            enc_config: The encoder configuration object.
+            dec_config: The decoder configuration object.
+            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`.
+            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`.
+            **kwargs: Keyword arguments for the `keras.Model` class.
         """
         super().__init__(enc_config, dec_config, pooling_type=pooling_type, **kwargs)
         self._encoder = SentVaeEncoder(self._enc_config, pooling_type=pooling_type, kl_factor=kl_factor)

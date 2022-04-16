@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """A module for checkpoint and logging callbacks"""
 
 from os import mkdir
@@ -46,12 +48,7 @@ class AeCustomCheckpoint(Callback):
         """
         subdir_path = os_path_join(self.checkpoint_root, subdir_name)
         weight_dir = os_path_join(subdir_path, f"weight_{subdir_name}.ckpt")
-        optimizer_dir = os_path_join(subdir_path, f"optim_{subdir_name}.pkl") \
-            if self.save_optimizer else None
-        if hasattr(self.model, "checkpoint"):
-            self.model.checkpoint(weight_path=weight_dir, optimizer_path=optimizer_dir)
-        else:
-            self.model.save(weight_dir, include_optimizer=self.save_optimizer)
+        self.model.save(weight_dir, include_optimizer=self.save_optimizer)
 
     def on_epoch_end(self, epoch: int, logs=None) -> None:
         """Save model if `save_freq == "epoch"`"""

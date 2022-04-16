@@ -6,7 +6,7 @@ from typing import Optional, Union, Sequence, Literal
 
 from tensorflow.keras.callbacks import History
 from tensorflow.keras.models import load_model
-from tensorflow.keras.losses import SparseCategoricalCrossentropy
+from tensorflow.keras.losses import SparseCategoricalCrossentropy, BinaryCrossentropy
 from tensorflow.keras.metrics import SparseCategoricalAccuracy
 from tensorflow_addons.optimizers import AdamW
 from ae_sentence_embeddings.losses_and_metrics import SparseCategoricalMCC
@@ -132,11 +132,12 @@ def fine_tune(
         else:
             model = load_model(model_ckpt)
         optimizer = AdamW(**adamw_args.to_dict())
+        loss_fn = SparseCategoricalCrossentropy(from_logits=True) if num_labels > 1 \
+            else BinaryCrossentropy(from_logits=True)
         metrics = [SparseCategoricalAccuracy()]
         if use_mcc:
             metrics.append(SparseCategoricalMCC(num_classes=num_labels))
-        model.compile(optimizer=optimizer, loss=SparseCategoricalCrossentropy(from_logits=True),
-                      metrics=metrics)
+        model.compile(optimizer=optimizer, loss=loss_fn, metrics=metrics)
     history = model.fit(
         x=train_dataset,
         epochs=num_epochs,
