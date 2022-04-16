@@ -9,7 +9,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.losses import SparseCategoricalCrossentropy, BinaryCrossentropy
 from tensorflow.keras.metrics import SparseCategoricalAccuracy
 from tensorflow_addons.optimizers import AdamW
-from ae_sentence_embeddings.losses_and_metrics import SparseCategoricalMCC
+from ae_sentence_embeddings.losses_and_metrics import SparseCategoricalMCC, BinaryMCC
 from transformers import (
     TFAutoModel,
     TFAutoModelForTokenClassification,
@@ -136,7 +136,9 @@ def fine_tune(
             else BinaryCrossentropy(from_logits=True)
         metrics = [SparseCategoricalAccuracy()]
         if use_mcc:
-            metrics.append(SparseCategoricalMCC(num_classes=num_labels))
+            mcc = SparseCategoricalMCC(num_classes=num_labels) if num_labels > 1 \
+                else BinaryMCC()
+            metrics.append(mcc)
         model.compile(optimizer=optimizer, loss=loss_fn, metrics=metrics)
     history = model.fit(
         x=train_dataset,

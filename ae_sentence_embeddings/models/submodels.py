@@ -8,7 +8,7 @@ Defining them as a model allows to use them separately after pre-training
 # This is the reason why the corresponding inspection were suppressed for some functions and classes.
 
 from __future__ import annotations
-from typing import Tuple, Sequence, Optional, Literal, Dict, Any
+from typing import Tuple, Optional, Literal, Dict, Any
 from types import MappingProxyType
 
 import tensorflow as tf
@@ -65,16 +65,16 @@ class SentAeEncoder(KModel):
 
     # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
-             training: Optional[bool] = None) -> Tuple[tf.Tensor, Sequence[tf.Tensor]]:
-        """Call the encoder
+             training: Optional[bool] = None) -> Tuple[tf.Tensor, Tuple[tf.Tensor]]:
+        """Call the encoder.
 
         Args:
             inputs: Input ID tensor with shape `(batch_size, sequence_length)`
-                    and attention mask with shape `(batch_size, sequence_length)`
-            training: Specifies whether the model is being used in training mode
+                    and attention mask with shape `(batch_size, sequence_length)`.
+            training: Specifies whether the model is being used in training mode.
 
         Returns:
-            A pooled tensor and the Transformer encoder outputs
+            A pooled tensor and the Transformer encoder outputs.
 
         """
         input_ids, attention_mask = inputs
@@ -97,8 +97,9 @@ class SentAeEncoder(KModel):
         return self._pooling((sequence_output, attention_mask)), encoder_outputs
 
     @property
-    def pooling_type(self) -> str:
-        return self._pooling_type
+    def pooling_type(self) -> Literal["average", "cls_sep"]:
+        # noinspection PyTypeChecker
+        return self._pooling_type  # The return type is correct, PyCharm may complain because of the `str.lower` call
 
     def get_config(self) -> Dict[str, Any]:
         base_config = super().get_config()
@@ -146,16 +147,16 @@ class SentVaeEncoder(SentAeEncoder):
         )
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
-             training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Sequence[tf.Tensor]]:
+             training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Tuple[tf.Tensor]]:
         """Call the encoder
 
         Args:
             inputs: Input IDs tensor with shape `(batch_size, sequence_length)`
-                    and attention mask with shape `(batch_size, sequence_length)`
-            training: Specifies whether the model is being used in training mode
+                    and attention mask with shape `(batch_size, sequence_length)`.
+            training: Specifies whether the model is being used in training mode.
 
         Returns:
-            Two pooled tensors (mean and log variance for VAE sampling) and the Transformer encoder outputs
+            Two pooled tensors (mean and log variance for VAE sampling) and the Transformer encoder outputs.
         """
         pooling_output, encoder_outputs = super().call(inputs, training=training)
         # noinspection PyCallingNonCallable
