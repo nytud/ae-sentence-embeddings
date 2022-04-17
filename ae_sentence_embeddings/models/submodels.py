@@ -15,6 +15,7 @@ import tensorflow as tf
 from tensorflow.keras import Model as KModel
 from tensorflow.keras import layers as tfl
 from tensorflow.keras.initializers import TruncatedNormal
+from tensorflow.keras.utils import register_keras_serializable
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 from transformers.modeling_tf_utils import keras_serializable
@@ -37,6 +38,7 @@ from ae_sentence_embeddings.argument_handling import (
 )
 
 
+@register_keras_serializable(package="ae_sentence_embeddings.models")
 class SentAeEncoder(KModel):
     """The full encoder part of an AE"""
 
@@ -51,7 +53,7 @@ class SentAeEncoder(KModel):
             **kwargs: Keyword arguments for the parent class
         """
         super().__init__(**kwargs)
-        self._config = config
+        self._transformer_config = config
         self._pooling_type = pooling_type.lower()
         if self._pooling_type == "average":
             self._pooling = AveragePoolingLayer()
@@ -61,7 +63,7 @@ class SentAeEncoder(KModel):
             raise NotImplementedError(f"Unknown pooling type: {pooling_type}")
         self._embedding_layer = SinusoidalEmbedding(
             PositionalEmbeddingArgs.collect_from_dict(config.to_dict()))
-        self._transformer_encoder = AeTransformerEncoder(self._config)
+        self._transformer_encoder = AeTransformerEncoder(self._transformer_config)
 
     # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
@@ -83,8 +85,8 @@ class SentAeEncoder(KModel):
         encoder_outputs = self._transformer_encoder(
             hidden_states=embeddings,
             attention_mask=mod_attention_mask,
-            head_mask=[None] * self._config.num_hidden_layers,
-            past_key_values=[None] * self._config.num_hidden_layers,
+            head_mask=[None] * self._transformer_config.num_hidden_layers,
+            past_key_values=[None] * self._transformer_config.num_hidden_layers,
             encoder_hidden_states=None,
             encoder_attention_mask=None,
             use_cache=False,
@@ -102,11 +104,9 @@ class SentAeEncoder(KModel):
         return self._pooling_type  # The return type is correct, PyCharm may complain because of the `str.lower` call
 
     def get_config(self) -> Dict[str, Any]:
-        base_config = super().get_config()
         return {
-            **base_config,
-            "encoder_config": self._config.to_dict(),
-            "pooling_type": self.pooling_type
+            "encoder_config": self._transformer_config.to_dict(),
+            "pooling_type": self._pooling_type
         }
 
     @classmethod
@@ -115,12 +115,14 @@ class SentAeEncoder(KModel):
         return cls(encoder_config, **config, **kwargs)
 
     @property
-    def config(self) -> MappingProxyType:
-        return MappingProxyType(self._config.to_dict())
+    def transformer_config(self) -> MappingProxyType:
+        return MappingProxyType(self._transformer_config.to_dict())
 
 
+@register_keras_serializable(package="ae_sentence_embeddings.models")
 class SentVaeEncoder(SentAeEncoder):
     """The full encoder part of a VAE"""
+    _keras_serializable = True
 
     def __init__(
             self,
@@ -175,7 +177,7 @@ class SentVaeEncoder(SentAeEncoder):
         base_config = super().get_config()
         return {
             **base_config,
-            "kl_factor": self.kl_factor
+            "kl_factor": self._post_pooling.kl_factor
         }
 
 
@@ -193,8 +195,8 @@ class SentAeDecoder(KModel):
             **kwargs: Keyword arguments for the parent class
         """
         super().__init__(**kwargs)
-        self._config = config
-        self._transformer_decoder = AeTransformerDecoder(self._config)
+        self._transformer_config = config
+        self._transformer_decoder = AeTransformerDecoder(self._transformer_config)
         embedding_args = PositionalEmbeddingArgs(
             vocab_size=config.vocab_size,
             max_position_embeddings=config.n_positions,
@@ -244,7 +246,7 @@ class SentAeGRUDecoder(KModel):
             **kwargs: Keyword arguments for the parent class
         """
         super().__init__(**kwargs)
-        self._config = config
+        self._gru_config = config
         config_dict = config.to_dict()
         vocab_size = config_dict.pop("vocab_size")
         embedding_init_range = config_dict.pop("initializer_dev")
@@ -280,11 +282,7 @@ class SentAeGRUDecoder(KModel):
         return logits
 
     def get_config(self) -> Dict[str, Any]:
-        base_config = super().get_config()
-        return {
-            **base_config,
-            "decoder_config": self._config.to_dict(),
-        }
+        return {"decoder_config": self._gru_config.to_dict()}
 
     @classmethod
     def from_config(cls, config: Dict[str, Any], **kwargs) -> SentAeGRUDecoder:
@@ -292,8 +290,8 @@ class SentAeGRUDecoder(KModel):
         return cls(decoder_config, **kwargs)
 
     @property
-    def config(self) -> MappingProxyType:
-        return MappingProxyType(self._config.to_dict())
+    def transformer_config(self) -> MappingProxyType:
+        return MappingProxyType(self._gru_config.to_dict())
 
 
 def parallel_decoders(

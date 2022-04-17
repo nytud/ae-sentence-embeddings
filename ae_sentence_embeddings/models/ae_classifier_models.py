@@ -10,12 +10,14 @@ from typing import Literal, Tuple, Optional
 import tensorflow as tf
 from tensorflow.keras import layers as tfl
 from tensorflow.keras.models import load_model
+from tensorflow.keras.utils import register_keras_serializable
 from transformers import BertConfig
 from transformers.modeling_tf_utils import get_initializer
 
 from ae_sentence_embeddings.models import SentVaeEncoder
 
 
+@register_keras_serializable(package="ae_sentence_embeddings.models")
 class SentVaeClassifier(SentVaeEncoder):
     """The encoder part of a sentence embedding VAE
     with a classifier head on top.
@@ -83,13 +85,24 @@ class SentVaeClassifier(SentVaeEncoder):
         """
         if num_labels <= 0:
             raise ValueError(f"The number of labels must be a positive integer, got {num_labels}")
+
+        # load the pre-trained model and get its configuration
         pre_trained_model = load_model(ckpt_path)
-        pre_trained_config = BertConfig(**pre_trained_model.config)
-        if pre_trained_config.num_labels is None:
-            pre_trained_config.num_labels = num_labels
-        new_kl_factor = kl_factor if kl_factor is not None else pre_trained_model.kl_factor
-        new_model = cls(pre_trained_config, pooling_type=pre_trained_model.pooling_type,
+        pre_trained_config = pre_trained_model.get_config()
+        pre_trained_encoder_config = BertConfig(**pre_trained_config["encoder_config"])
+        if pre_trained_encoder_config.num_labels is None:
+            pre_trained_encoder_config.num_labels = num_labels
+        new_kl_factor = kl_factor if kl_factor is not None else pre_trained_config["kl_factor"]
+
+        # create the new model
+        new_model = cls(pre_trained_encoder_config, pooling_type=pre_trained_config["pooling_type"],
                         kl_factor=new_kl_factor)
+        # build the model by calling it on dummy inputs
+        dummy_inputs = (tf.constant([[0, 1, 2]]), tf.constant([[1, 1, 1]]))
+        # noinspection PyCallingNonCallable
+        _ = new_model(dummy_inputs, training=False)
+
+        # copy the weights
         for pre_trained_layer, new_layer in zip(pre_trained_model.layers, new_model.layers):
             new_layer.set_weights(pre_trained_layer.get_weights())
         return new_model

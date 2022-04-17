@@ -94,10 +94,8 @@ class BaseAe(KModel, metaclass=ABCMeta):
         return
 
     def get_config(self) -> Dict[str, Any]:
-        base_config = super().get_config()
         decoder_config_type = type(self._dec_config).__name__
         return {
-            **base_config,
             "decoder_config_type": decoder_config_type,
             "encoder_config": self._enc_config.to_dict(),
             "decoder_config": self._dec_config.to_dict(),

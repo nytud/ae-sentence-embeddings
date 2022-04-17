@@ -7,3 +7,4 @@ from .submodels import (
     ae_double_transformer_gru
 )
 from .ae_models import TransformerVae, TransformerAe, BertBiRnnVae, BertRnnVae
+from .ae_classifier_models import SentVaeClassifier
