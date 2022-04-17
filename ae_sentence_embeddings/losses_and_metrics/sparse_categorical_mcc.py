@@ -42,36 +42,3 @@ class SparseCategoricalMCC(MCCoefficient):
         y_true = tf.ensure_shape(y_true, (None,))
         y_true = tf.one_hot(y_true, depth=self.num_classes, dtype=y_pred.dtype)
         super().update_state(y_true, y_pred, sample_weight=sample_weight)
-
-
-class BinaryMCC(MCCoefficient):
-    """A class that implements the Matthews Correlation Coefficient
-    with a single binary classification `y_true` label.
-    """
-
-    def __init__(self, name: str = "binary_mcc", **kwargs) -> None:
-        """Initialize the metric.
-
-        Args:
-            name: Name of the metric instance. Defaults to `'binary_mcc'`.
-            **kwargs: Parent class keyword arguments.
-        """
-        super().__init__(num_classes=2, name=name, **kwargs)
-
-    def update_state(
-            self,
-            y_true: tf.Tensor,
-            y_pred: tf.Tensor,
-            sample_weight: Optional[tf.Tensor] = None
-    ) -> None:
-        """Update the metric state.
-
-        Args:
-            y_true: The ground truth labels, an integer tensor of shape `(batch_size, 1)`.
-            y_pred: The predictions, a float tensor of shape `(batch_size, 1)`.
-            sample_weight: Optional. Weights of the data points.
-        """
-        y_true = tf.one_hot(tf.squeeze(y_true), depth=self.num_classes, dtype=y_pred.dtype)
-        y_pred = tf.nn.sigmoid(y_pred)
-        y_pred = tf.concat([1-y_pred, y_pred], axis=-1)
-        super().update_state(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
