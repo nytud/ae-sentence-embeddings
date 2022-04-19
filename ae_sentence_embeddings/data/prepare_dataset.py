@@ -199,8 +199,9 @@ def get_train_and_validation(
         cache_dir: Optional[str] = None,
         set_data_shard: bool = False,
         prefetch: Optional[int] = None,
+        drop_remainder: bool = True
 ) -> Tuple[TFDataset, TFDataset]:
-    """Get a training and a validation TensorFlow dataset from files
+    """Get a training and a validation TensorFlow dataset from files.
 
     Args:
         data_split_paths: A dataclass with paths to `.jsonl` dataset splits.
@@ -210,9 +211,10 @@ def get_train_and_validation(
             set to `DATA`. Defaults to `False`.
         prefetch: Optional. If specified, `prefetch` batches will be prefetched
             during training.
+        drop_remainder: Specify whether the last batch should be dropped. Defaults to `True`.
 
     Returns:
-        The ae_training and the validation TensorFlow dataset
+        The ae_training and the validation TensorFlow dataset.
 
     """
     dev_args = deepcopy(train_args)
@@ -221,8 +223,8 @@ def get_train_and_validation(
                                                        data_files=[data_split_paths.train_path], cache_dir=cache_dir))
     dev_dataset = convert_to_tf_dataset(load_dataset("json", split="train",
                                                      data_files=[data_split_paths.dev_path], cache_dir=cache_dir))
-    train_dataset = pad_and_batch(train_dataset, data_stream_args=train_args)
-    dev_dataset = pad_and_batch(dev_dataset, data_stream_args=dev_args)
+    train_dataset = pad_and_batch(train_dataset, data_stream_args=train_args, drop_remainder=drop_remainder)
+    dev_dataset = pad_and_batch(dev_dataset, data_stream_args=dev_args, drop_remainder=drop_remainder)
     if set_data_shard:
         data_options = tf.data.Options()
         data_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA

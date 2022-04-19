@@ -59,13 +59,14 @@ def fine_tune(
         lr_args: Optional[OneCycleArgs] = None,
         momentum_args: Optional[OneCycleArgs] = None,
         dataset_cache_dir: Optional[str] = None,
+        drop_remainder: bool = True,
         devices: Optional[Sequence[str]] = None,
         use_mcc: bool = False,
         num_epochs: int = 3,
         prefetch: Optional[int] = 2,
         verbose: Literal[0, 1, 2] = 2
 ) -> History:
-    """Do pre-train
+    """Do fine-tuning.
 
     Args:
         model_ckpt: A model checkpoint or a model name. If `model_type` is specified, the
@@ -85,6 +86,7 @@ def fine_tune(
         lr_args: Optional. Learning rate scheduler arguments as a dataclass.
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
         dataset_cache_dir: Optional. A cache directory for loading the `dataset`.
+        drop_remainder: Specify whether the last batch should be dropped. Defaults to `True`.
         devices: Optional. GPU devices to use, e.g. `\"GPU:0\", \"GPU:1\"`.
         use_mcc: Use Matthews Correlation Coefficient metric instead of accuracy.
             Defaults to `False`.
@@ -110,7 +112,8 @@ def fine_tune(
         train_args=data_stream_args,
         cache_dir=dataset_cache_dir,
         set_data_shard=True,
-        prefetch=prefetch
+        prefetch=prefetch,
+        drop_remainder=drop_remainder
     )
 
     # Configure the callbacks
