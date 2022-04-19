@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ae-sentence-embeddings"
-version = "0.0.1"
+version = "0.1.0"
 description = "A package for training Transformer-based autoencoders"
 readme = "README.md"
 repository = "https://github.com/nyekibence/ae-sentence-embeddings"
@@ -21,6 +21,7 @@ datasets = "^2.0.0"
 
 [tool.poetry.dev-dependencies]
 poetry2setup = "^1.0.0"
+Sphinx = "^4.5.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

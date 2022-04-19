@@ -27,7 +27,7 @@ install_requires = \
 
 setup_kwargs = {
     "name": "ae-sentence-embeddings",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "description": "A package for training Transformer-based autoencoders",
     "long_description": long_description,
     "author": "Nyéki Bence",
@@ -38,7 +38,7 @@ setup_kwargs = {
     "packages": packages,
     "package_data": package_data,
     "install_requires": install_requires,
-    "python_requires": ">=3.10,<3.11",
+    "python_requires": ">=3.8,<3.10",
 }
 
 
