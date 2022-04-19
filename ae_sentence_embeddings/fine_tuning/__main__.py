@@ -30,6 +30,7 @@ def main() -> None:
         save_and_log_args=train_args.save_and_log_args,
         lr_args=train_args.lr_one_cycle_args,
         momentum_args=train_args.momentum_one_cycle_args,
+        freeze_encoder=bool(config.get("freeze_encoder")),
         validation_freq=config.get("validation_freq", "epoch"),
         dataset_cache_dir=config.get("dataset_cache_dir"),
         devices=config.get("devices"),

@@ -9,14 +9,13 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.losses import SparseCategoricalCrossentropy, BinaryCrossentropy
 from tensorflow.keras.metrics import SparseCategoricalAccuracy
 from tensorflow_addons.optimizers import AdamW
-from ae_sentence_embeddings.losses_and_metrics import SparseCategoricalMCC
-from losses_and_metrics import BinaryMCC, BinaryLogitAccuracy
 from transformers import (
     TFAutoModel,
     TFAutoModelForTokenClassification,
     TFAutoModelForSequenceClassification
 )
 
+from ae_sentence_embeddings.losses_and_metrics import SparseCategoricalMCC, BinaryMCC, BinaryLogitAccuracy
 from ae_sentence_embeddings.data import get_train_and_validation
 from ae_sentence_embeddings.ae_training import devices_setup, log_and_schedule_setup
 from ae_sentence_embeddings.argument_handling import (
@@ -58,6 +57,7 @@ def fine_tune(
         model_type: Optional[type] = None,
         lr_args: Optional[OneCycleArgs] = None,
         momentum_args: Optional[OneCycleArgs] = None,
+        freeze_encoder: bool = False,
         dataset_cache_dir: Optional[str] = None,
         drop_remainder: bool = True,
         devices: Optional[Sequence[str]] = None,
@@ -85,6 +85,8 @@ def fine_tune(
             `model_ckpt` argument.
         lr_args: Optional. Learning rate scheduler arguments as a dataclass.
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
+        freeze_encoder: Set it to `True` if only the classifier head is to be trained.
+            Defaults to `False`.
         dataset_cache_dir: Optional. A cache directory for loading the `dataset`.
         drop_remainder: Specify whether the last batch should be dropped. Defaults to `True`.
         devices: Optional. GPU devices to use, e.g. `\"GPU:0\", \"GPU:1\"`.
@@ -135,6 +137,10 @@ def fine_tune(
             model = model_type.from_pretrained(model_ckpt, num_labels=num_labels)
         else:
             model = load_model(model_ckpt)
+        if freeze_encoder:
+            for encoder_layer in (layer for layer in model.layers if
+                                  not layer.name.lower().startswith("classifier")):
+                encoder_layer.trainable = False
         optimizer = AdamW(**adamw_args.to_dict())
         if num_labels > 1:
             metrics = [SparseCategoricalAccuracy()]
