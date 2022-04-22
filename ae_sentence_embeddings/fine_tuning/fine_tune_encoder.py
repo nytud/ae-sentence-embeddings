@@ -18,6 +18,7 @@ from transformers import (
 from ae_sentence_embeddings.losses_and_metrics import SparseCategoricalMCC, BinaryMCC, BinaryLogitAccuracy
 from ae_sentence_embeddings.data import get_train_and_validation
 from ae_sentence_embeddings.ae_training import devices_setup, log_and_schedule_setup
+from ae_sentence_embeddings.models import SentVaeClassifier
 from ae_sentence_embeddings.argument_handling import (
     DataStreamArgs,
     AdamwArgs,
@@ -30,7 +31,8 @@ TransformerTypes = Union[TFAutoModel, TFAutoModelForTokenClassification, TFAutoM
 transformers_type_dict = {
     "Model": TFAutoModel,
     "SequenceClassification": TFAutoModelForSequenceClassification,
-    "TokenClassification": TFAutoModelForTokenClassification
+    "TokenClassification": TFAutoModelForTokenClassification,
+    "SentVaeClassifier": SentVaeClassifier
 }
 
 
@@ -80,9 +82,8 @@ def fine_tune(
         save_and_log_args: Model checkpoint and logging arguments as a dataclass.
         validation_freq: Specify how often to validate: After each epoch (value `"epoch"`).
             or after `validation_freq` iterations (if integer).
-        model_type: Optional. The name of a `transformers` model type, i.e. `'TFBertModel'`.
-            If it is not specified, a Keras-serialized model checkpoint is expected as the
-            `model_ckpt` argument.
+        model_type: Optional. The model class, i.e. `TFBertModel`. If it is not specified,
+            a Keras-serialized model checkpoint is expected as the `model_ckpt` argument.
         lr_args: Optional. Learning rate scheduler arguments as a dataclass.
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
         freeze_encoder: Set it to `True` if only the classifier head is to be trained.
@@ -101,8 +102,8 @@ def fine_tune(
         The training history object.
     """
     # Model check
-    is_transformers_model = hasattr(model_type, "from_pretrained")
-    if not is_transformers_model and model_type is not None:
+    is_transformers_like = hasattr(model_type, "from_pretrained")
+    if not is_transformers_like and model_type is not None:
         raise TypeError(f"You have specified the model type {model_type.__name__} which does not have "
                         "a `from_pretrained` method. If you have such a model class, please leave the "
                         "`model_type` argument unspecified and pass the checkpoint of a Keras "
@@ -131,7 +132,7 @@ def fine_tune(
     # Configure the training
     strategy = devices_setup(devices)
     with strategy.scope():
-        if is_transformers_model:
+        if is_transformers_like:
             # PyCharm may regard `model_type` as `None` here
             # noinspection PyUnresolvedReferences
             model = model_type.from_pretrained(model_ckpt, num_labels=num_labels)

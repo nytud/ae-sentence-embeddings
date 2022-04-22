@@ -5,7 +5,7 @@ a classifier head on top.
 """
 
 from __future__ import annotations
-from typing import Literal, Tuple, Optional
+from typing import Literal, Tuple, Optional, Dict, Any
 
 import tensorflow as tf
 from tensorflow.keras import layers as tfl
@@ -26,6 +26,7 @@ class SentVaeClassifier(SentVaeEncoder):
     def __init__(
             self,
             config: BertConfig,
+            num_labels: int,
             pooling_type: Literal["average", "cls_sep"] = "cls_sep",
             kl_factor: float = 0.,
             **kwargs
@@ -36,18 +37,22 @@ class SentVaeClassifier(SentVaeEncoder):
 
         Args:
             config: A BERT configuration object.
+            num_labels: The number of classification labels. Set it to `1` for binary classification.
             pooling_type: Pooling type, `'average'` or `'cls_sep'`. Defaults to `'cls_sep'`.
             kl_factor: A normalizing constant by which the KL loss will be multiplied.
                 Set it to zero if the KL loss should be ignored. Defaults to `0.0`.
             **kwargs: Keyword arguments passed to the `keras.Model` initializer.
         """
+        if num_labels <= 0:
+            raise ValueError(f"The number of labels must be a positive integer, got {num_labels}")
         super().__init__(config=config, pooling_type=pooling_type,
                          kl_factor=kl_factor, **kwargs)
+        self._num_labels = num_labels
         classifier_dropout = config.classifier_dropout if config.classifier_dropout is not None \
             else config.hidden_dropout_prob
         self._dropout = tfl.Dropout(rate=classifier_dropout)
         self._classifier = tfl.Dense(
-            units=config.num_labels,
+            units=num_labels,
             kernel_initializer=get_initializer(config.initializer_range),
             name="classifier"
         )
@@ -69,16 +74,15 @@ class SentVaeClassifier(SentVaeEncoder):
         return self._classifier(self._dropout(post_pooling_mean, training=training))
 
     @classmethod
-    def from_pretrained_encoder(cls, ckpt_path: str, num_labels: int = 1,
-                                kl_factor: Optional[float] = None) -> SentVaeClassifier:
+    def from_pretrained(cls, ckpt_path: str, num_labels: int = 1,
+                        kl_factor: Optional[float] = 0.) -> SentVaeClassifier:
         """Load the encoder weights from a pre-trained model.
 
         Args:
             ckpt_path: Path to a Keras-serialized model checkpoint.
-            num_labels: Number of classification labels. Only relevant if it is not
-                specified in the configuration of the pre-trained model. Defaults to `1`.
-            kl_factor: Optional. If specified, the KL multiplier of the pre-trained model will
-                be overridden.
+            num_labels: Number of classification labels. Defaults to `1`.
+            kl_factor: A value which will override the KL multiplier of the
+                pre-trained model. Set it to `None` to omit this. Defaults to `0.`.
 
         Returns:
             A model whit pre-trained encoder weights and newly initialized classifier weights.
@@ -90,13 +94,12 @@ class SentVaeClassifier(SentVaeEncoder):
         pre_trained_model = load_model(ckpt_path)
         pre_trained_config = pre_trained_model.get_config()
         pre_trained_encoder_config = BertConfig(**pre_trained_config["encoder_config"])
-        if pre_trained_encoder_config.num_labels is None:
-            pre_trained_encoder_config.num_labels = num_labels
+        pre_trained_encoder_config.num_labels = num_labels
         new_kl_factor = kl_factor if kl_factor is not None else pre_trained_config["kl_factor"]
 
         # create the new model
         new_model = cls(pre_trained_encoder_config, pooling_type=pre_trained_config["pooling_type"],
-                        kl_factor=new_kl_factor)
+                        kl_factor=new_kl_factor, num_labels=num_labels)
         # build the model by calling it on dummy inputs
         dummy_inputs = (tf.constant([[0, 1, 2]]), tf.constant([[1, 1, 1]]))
         # noinspection PyCallingNonCallable
@@ -106,3 +109,11 @@ class SentVaeClassifier(SentVaeEncoder):
         for pre_trained_layer, new_layer in zip(pre_trained_model.layers, new_model.layers):
             new_layer.set_weights(pre_trained_layer.get_weights())
         return new_model
+
+    def get_config(self) -> Dict[str, Any]:
+        base_config = super().get_config()
+        return {**base_config, "num_labels": self._num_labels}
+
+    @property
+    def num_labels(self) -> int:
+        return self._num_labels
