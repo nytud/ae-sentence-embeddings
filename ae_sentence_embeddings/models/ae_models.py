@@ -25,6 +25,7 @@ from ae_sentence_embeddings.models import (
     SentAeDecoder,
     SentAeEncoder,
     SentAeGRUDecoder,
+    ae_double_gru,
     ae_double_transformer_gru
 )
 
@@ -164,6 +165,52 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
         }
 
 
+class BaseDoubleVae(BaseVae, metaclass=ABCMeta):
+    """Abstract class for VAEs with parallel decoders."""
+
+    @staticmethod
+    def _get_call_inputs(
+            inputs: Tuple[Tuple[tf.Tensor, tf.Tensor], Tuple[tf.Tensor, tf.Tensor]]
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Handle inputs.
+
+        Args:
+            inputs: Two tensor pairs, each of which consists of an input token IDs and
+                a tensor of attention mask, respectively.
+
+        Returns:
+            The concatenated input IDs and the concatenated attention masks.
+        """
+        lang1, lang2 = inputs
+        input_ids = tf.concat([lang1[0], lang2[0]], axis=0)
+        attn_mask = tf.concat([lang1[1], lang2[1]], axis=0)
+        return input_ids, attn_mask
+
+    @abstractmethod
+    def call(self, inputs, training=None):
+        return
+
+    def train_step(self, data) -> Dict[str, Any]:
+        """Override parent class method in order to handle bilingual data correctly."""
+        x, y = data
+        y = tf.concat(y, axis=0)
+        with tf.GradientTape() as tape:
+            # noinspection PyCallingNonCallable
+            y_pred = self(x, training=True)
+            loss = self.compiled_loss(y, y_pred, regularization_losses=self.losses)
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+        self.compiled_metrics.update_state(y, y_pred)
+        return {m.name: m.result() for m in self.metrics}
+
+    def test_step(self, data) -> Dict[str, Any]:
+        """Override parent class method in order to handle bilingual data correctly."""
+        x, y = data
+        y = tf.concat(y, axis=0)
+        return super().test_step((x, y))
+
+
 # noinspection PyCallingNonCallable
 class TransformerAe(BaseAe):
     """A Transformer-based AE"""
@@ -206,7 +253,7 @@ class TransformerVae(BaseVae):
     def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig,
                  pooling_type: Literal["cls_sep", "average"] = "cls_sep",
                  kl_factor: float = 1.0, **kwargs) -> None:
-        """Initialize the VAE
+        """Initialize the VAE.
 
         Args:
             enc_config: The encoder configuration object
@@ -265,7 +312,7 @@ class BertRnnVae(BaseVae):
 
 
 # noinspection PyCallingNonCallable
-class BertBiRnnVae(BaseVae):
+class BertBiRnnVae(BaseDoubleVae):
     """A Transformer-RNN VAE for bilingual training"""
 
     def __init__(
@@ -308,7 +355,7 @@ class BertBiRnnVae(BaseVae):
 
     def call(self, inputs: Tuple[Tuple[tf.Tensor, tf.Tensor], Tuple[tf.Tensor, tf.Tensor]],
              training: Optional[bool] = None) -> tf.Tensor:
-        """Call the full model
+        """Call the full model.
 
         Args:
             inputs: Two tensor pairs, each of which consists of an input token IDs and
@@ -316,11 +363,9 @@ class BertBiRnnVae(BaseVae):
             training: Specifies whether the model is being used in training mode
 
         Returns:
-            The logits of a probability distribution for next token prediction
+            The logits of a probability distribution for next token prediction.
         """
-        lang1, lang2 = inputs
-        input_ids = tf.concat([lang1[0], lang2[0]], axis=0)
-        attn_mask = tf.concat([lang1[1], lang2[1]], axis=0)
+        input_ids, attn_mask = self._get_call_inputs(inputs)
         mean, log_var, _ = self._encoder((input_ids, attn_mask), training=training)
         sents1, sents2 = self._splitter(self._sampler((mean, log_var)))
         sents1, sents2 = self._swapper(((sents1, sents2),), training=training)[0]
@@ -328,25 +373,6 @@ class BertBiRnnVae(BaseVae):
         dec_inputs1, dec_inputs2 = self._splitter(self._dec_embedding_layer(input_ids))
         logits = self._decoder((sents1, dec_inputs1, sents2, dec_inputs2), training=training)
         return logits
-
-    def train_step(self, data) -> Dict[str, Any]:
-        """Override parent class method in order to handle bilingual data correctly"""
-        x, y = data
-        y = tf.concat(y, axis=0)
-        with tf.GradientTape() as tape:
-            y_pred = self(x, training=True)
-            loss = self.compiled_loss(y, y_pred, regularization_losses=self.losses)
-        trainable_vars = self.trainable_variables
-        gradients = tape.gradient(loss, trainable_vars)
-        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
-        self.compiled_metrics.update_state(y, y_pred)
-        return {m.name: m.result() for m in self.metrics}
-
-    def test_step(self, data) -> Dict[str, Any]:
-        """Override parent class method in order to handle bilingual data correctly"""
-        x, y = data
-        y = tf.concat(y, axis=0)
-        return super().test_step((x, y))
 
     @property
     def rnn_config(self) -> MappingProxyType:
@@ -366,3 +392,52 @@ class BertBiRnnVae(BaseVae):
             **base_config,
             "swap_p": self.swap_p
         }
+
+
+# noinspection PyCallingNonCallable
+class BertBiRnnVaeSmall(BaseDoubleVae):
+    """A Transformer-RNN VAE for bilingual training with
+    thin decoders.
+    """
+
+    def __init__(
+            self,
+            enc_config: BertConfig,
+            dec_config: RnnArgs,
+            pooling_type: Literal["cls_sep", "average"] = "cls_sep",
+            kl_factor: float = 1.0,
+            **kwargs
+    ) -> None:
+        """Initialize the model
+
+        Args:
+            enc_config: A BERT configuration object.
+            dec_config: A decoder configuration object.
+            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`.
+            kl_factor: A normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`.
+            **kwargs: Keyword arguments for the `keras.Model` class.
+        """
+        super().__init__(enc_config, dec_config, pooling_type=pooling_type,
+                         kl_factor=kl_factor, **kwargs)
+        self._splitter = tfl.Lambda(lambda x: tf.split(x, 2))
+        self._decoder = ae_double_gru(dec_config)
+
+    def call(self, inputs: Tuple[Tuple[tf.Tensor, tf.Tensor], Tuple[tf.Tensor, tf.Tensor]],
+             training: Optional[bool] = None) -> tf.Tensor:
+        """Call the model.
+
+        Args:
+            inputs: Two tensor pairs, each of which consists of an input token IDs and
+                a tensor of attention mask, respectively.
+            training: Specifies whether the model is being used in training mode.
+
+        Returns:
+            The logits of a probability distribution for next token prediction.
+        """
+        input_ids, attn_mask = self._get_call_inputs(inputs)
+        mean, log_var, encoder_outputs = self._encoder((input_ids, attn_mask), training=training)
+        token_embeddings1, token_embeddings2 = self._splitter(encoder_outputs[-1])
+        sents1, sents2 = self._splitter(self._sampler((mean, log_var)))
+        logits = self._decoder((sents1, token_embeddings1, sents2, token_embeddings2),
+                               training=training)
+        return logits

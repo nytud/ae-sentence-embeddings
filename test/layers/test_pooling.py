@@ -4,7 +4,7 @@
 
 import tensorflow as tf
 
-from ae_sentence_embeddings.layers import CLSPlusSEPPooling
+from ae_sentence_embeddings.layers import CLSPlusSEPPooling, AveragePoolingLayer
 
 
 class PoolingTest(tf.test.TestCase):
@@ -26,6 +26,13 @@ class PoolingTest(tf.test.TestCase):
         layer_output = CLSPlusSEPPooling()((self.hidden_states, self.attn_mask))
         print(f"The expected CLS + SEP output is:\n{expected_output}")
         print(f"The evaluated CLS + SEP output is:\n{layer_output}")
+        self.assertAllEqual(expected_output, layer_output)
+
+    def test_average_pooling(self) -> None:
+        """Test average pooling."""
+        expected_output = tf.constant([[2.5]*6, [2.]*6])
+        # noinspection PyCallingNonCallable
+        layer_output = AveragePoolingLayer()((self.hidden_states, self.attn_mask))
         self.assertAllEqual(expected_output, layer_output)
 
 

@@ -25,6 +25,7 @@ from ae_sentence_embeddings.layers import (
     AeTransformerDecoder,
     PostPoolingLayer,
     AveragePoolingLayer,
+    PMeansPooling,
     CLSPlusSEPPooling,
     AeGRUDecoder,
     AeTransformerGRUDecoder,
@@ -45,12 +46,13 @@ class SentAeEncoder(KModel):
     def __init__(self, config: BertConfig,
                  pooling_type: Literal["average", "cls_sep"] = "cls_sep",
                  **kwargs) -> None:
-        """Layer initializer
+        """Layer initializer.
 
         Args:
-            config: A BERT configuration object
-            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
-            **kwargs: Keyword arguments for the parent class
+            config: A BERT configuration object.
+            pooling_type: Pooling method, `'average'`, `'cls_sep'`
+                or `'p_means'`. Defaults to `"cls_sep"`.
+            **kwargs: Keyword arguments for the parent class.
         """
         super().__init__(**kwargs)
         self._transformer_config = config
@@ -59,6 +61,8 @@ class SentAeEncoder(KModel):
             self._pooling = AveragePoolingLayer()
         elif self._pooling_type == "cls_sep":
             self._pooling = CLSPlusSEPPooling()
+        elif self._pooling_type == "p_means":
+            self._pooling = PMeansPooling()
         else:
             raise NotImplementedError(f"Unknown pooling type: {pooling_type}")
         self._embedding_layer = SinusoidalEmbedding(
@@ -96,7 +100,8 @@ class SentAeEncoder(KModel):
             training=training
         )
         sequence_output = encoder_outputs[0]
-        return self._pooling((sequence_output, attention_mask)), encoder_outputs
+        pooling_result = self._pooling((sequence_output, attention_mask))
+        return pooling_result, encoder_outputs + (embeddings,)
 
     @property
     def pooling_type(self) -> Literal["average", "cls_sep"]:

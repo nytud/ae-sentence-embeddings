@@ -29,29 +29,31 @@ class AeGRUDecoder(tfl.Layer):
             dropout_rate: float = 0.1,
             **kwargs
     ) -> None:
-        """Initialize the GRU decoder
+        """Initialize the GRU decoder.
 
         Args:
-            num_rnn_layers: Number of RNN layers. Defaults to 2
-            hidden_size: Hidden size in the RNN and dense layers. Defaults to 768
-            layernorm_eps: Layer normalization epsilon parameter. Defaults to 1e-12
-            dropout_rate: A dropout rate between 0 and 1. Defaults to 0.1
-            **kwargs: Parent class keyword arguments
+            num_rnn_layers: Number of RNN layers. Defaults to `2`.
+            hidden_size: Hidden size in the RNN and dense layers. Defaults to `768`.
+            layernorm_eps: Layer normalization epsilon parameter. Defaults to `1e-12`.
+            dropout_rate: A dropout rate between 0 and 1. `Defaults to 0.1`.
+            **kwargs: Parent class keyword arguments.
         """
         super().__init__(**kwargs)
         self._num_rnn_layers = num_rnn_layers
         self._hidden_size = hidden_size
-        self.layernorm_eps = layernorm_eps
-        self.dropout_rate = dropout_rate
-        self.rnn = [tfl.GRU(
+        self._layernorm_eps = layernorm_eps
+        self._dropout_rate = dropout_rate
+        self._decoder_dense = tfl.Dense(self._hidden_size, activation="tanh",
+                                        name="ae_decoder_dense")
+        self._rnn = [tfl.GRU(
             units=self._hidden_size,
-            recurrent_dropout=self.dropout_rate,
+            recurrent_dropout=self._dropout_rate,
             return_sequences=True,
             return_state=True,
             name=f"ae_GRU_{i}"
         ) for i in range(self._num_rnn_layers)]
-        self.dropout = tfl.Dropout(self.dropout_rate)
-        self.layernorm = tfl.LayerNormalization(epsilon=self.layernorm_eps)
+        self._dropout = tfl.Dropout(self._dropout_rate)
+        self._layernorm = tfl.LayerNormalization(epsilon=self._layernorm_eps)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> tf.Tensor:
@@ -59,22 +61,23 @@ class AeGRUDecoder(tfl.Layer):
 
         Args:
             inputs: A tuple of two tensors: the initial hidden state tensor of size `(batch_size, hidden_size)` and
-                an embedded input tensor of shape `(batch_size, sequence_length, hidden_size)`
-            training: Specify whether the layer is being used in training mode
+                an embedded input tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            training: Specify whether the layer is being used in training mode.
 
         Returns:
-            A tensor of shape `batch_size, sequence_length, hidden_size`
+            A tensor of shape `(batch_size, sequence_length, hidden_size)`.
 
         """
         hidden_state, embeddings = inputs
-        for rnn_layer in self.rnn:
+        embeddings = self._decoder_dense(embeddings)
+        for rnn_layer in self._rnn:
             embeddings, hidden_state = rnn_layer(
                 inputs=embeddings,
                 initial_state=hidden_state,
                 training=training
             )
-        embeddings = self.dropout(embeddings, training=training)
-        return self.layernorm(embeddings)
+        embeddings = self._dropout(embeddings, training=training)
+        return self._layernorm(embeddings)
 
     def get_config(self) -> Dict[str, Any]:
         base_config = super().get_config()
@@ -82,8 +85,8 @@ class AeGRUDecoder(tfl.Layer):
             **base_config,
             "num_rnn_layers": self._num_rnn_layers,
             "hidden_size": self._hidden_size,
-            "layernorm_eps": self.layernorm_eps,
-            "dropout_rate": self.dropout_rate
+            "layernorm_eps": self._layernorm_eps,
+            "dropout_rate": self._dropout_rate
         }
 
     @property
