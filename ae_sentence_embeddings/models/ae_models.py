@@ -31,22 +31,23 @@ from ae_sentence_embeddings.models import (
 
 
 class BaseAe(KModel, metaclass=ABCMeta):
-    """Base class for Transformer AEs. Used for subclassing only"""
+    """Base class for Transformer AEs. Used for subclassing only."""
 
     def __init__(
             self,
             enc_config: BertConfig,
             dec_config: Union[OpenAIGPTConfig, RnnArgs],
-            pooling_type: Literal["average", "cls_sep"] = "cls_sep",
+            pooling_type: Literal["average", "cls_sep", "p_means"] = "cls_sep",
             **kwargs
     ) -> None:
-        """Initialize the invariant AE layers that do not depend on the AE architecture choice
+        """Initialize the invariant AE layers that do not depend on the AE architecture choice.
 
         Args:
-            enc_config: The encoder configuration object
-            dec_config: The decoder configuration object
-            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
-            **kwargs: Keyword arguments for the parent class
+            enc_config: The encoder configuration object.
+            dec_config: The decoder configuration object.
+            pooling_type: Pooling method, `'average'`, `'cls_sep'` or `'p_means'`.
+                Defaults to `'cls_sep'`.
+            **kwargs: Keyword arguments for the parent class.
         """
         if enc_config.vocab_size != dec_config.vocab_size:
             raise ValueError("Vocab size and should be the same in the encoder and the decoder")
@@ -134,7 +135,7 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
     """Base class for Transformer-based VAE encoders. Use for subclassing only"""
 
     def __init__(self, enc_config: BertConfig, dec_config: Union[OpenAIGPTConfig, RnnArgs],
-                 pooling_type: Literal["cls_sep", "average"] = "cls_sep",
+                 pooling_type: Literal["cls_sep", "average", "p_means"] = "cls_sep",
                  kl_factor: float = 1.0, **kwargs) -> None:
         """Initialize the VAE.
 
@@ -216,7 +217,7 @@ class TransformerAe(BaseAe):
     """A Transformer-based AE"""
 
     def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig,
-                 pooling_type: Literal["cls_sep", "average"] = "cls_sep", **kwargs) -> None:
+                 pooling_type: Literal["cls_sep", "average", "p_means"] = "cls_sep", **kwargs) -> None:
         """Initialize the AE
 
         Args:
@@ -251,7 +252,7 @@ class TransformerVae(BaseVae):
     """A Transformer-based VAE"""
 
     def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig,
-                 pooling_type: Literal["cls_sep", "average"] = "cls_sep",
+                 pooling_type: Literal["cls_sep", "average", "p_means"] = "cls_sep",
                  kl_factor: float = 1.0, **kwargs) -> None:
         """Initialize the VAE.
 
@@ -321,7 +322,7 @@ class BertBiRnnVae(BaseDoubleVae):
             dec_config: OpenAIGPTConfig,
             rnn_config: RnnLayerArgs,
             num_transformer2gru: int,
-            pooling_type: Literal["cls_sep", "average"] = "cls_sep",
+            pooling_type: Literal["cls_sep", "average", "p_means"] = "cls_sep",
             kl_factor: float = 1.0,
             swap_p: float = 0.5,
             **kwargs
@@ -404,7 +405,7 @@ class BertBiRnnVaeSmall(BaseDoubleVae):
             self,
             enc_config: BertConfig,
             dec_config: RnnArgs,
-            pooling_type: Literal["cls_sep", "average"] = "cls_sep",
+            pooling_type: Literal["cls_sep", "average", "p_means"] = "cls_sep",
             kl_factor: float = 1.0,
             **kwargs
     ) -> None:

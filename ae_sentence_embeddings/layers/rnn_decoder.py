@@ -60,8 +60,8 @@ class AeGRUDecoder(tfl.Layer):
         """Call the model
 
         Args:
-            inputs: A tuple of two tensors: the initial hidden state tensor of size `(batch_size, hidden_size)` and
-                an embedded input tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            inputs: A tuple of two tensors: the initial hidden state tensor of size `(batch_size, hidden_size)`
+                and an embedded input tensor of shape `(batch_size, sequence_length, hidden_size)`.
             training: Specify whether the layer is being used in training mode.
 
         Returns:
@@ -70,12 +70,14 @@ class AeGRUDecoder(tfl.Layer):
         """
         hidden_state, embeddings = inputs
         embeddings = self._decoder_dense(embeddings)
+        hidden_states = [hidden_state]
         for rnn_layer in self._rnn:
             embeddings, hidden_state = rnn_layer(
                 inputs=embeddings,
-                initial_state=hidden_state,
+                initial_state=tf.reduce_mean(hidden_states, axis=0),
                 training=training
             )
+            hidden_states.append(hidden_state)
         embeddings = self._dropout(embeddings, training=training)
         return self._layernorm(embeddings)
 

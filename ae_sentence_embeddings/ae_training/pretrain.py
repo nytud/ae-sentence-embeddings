@@ -38,7 +38,7 @@ from ae_sentence_embeddings.data import get_train_and_validation, post_batch_fea
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
 from ae_sentence_embeddings.modeling_tools import get_training_args, read_json
 
-PoolingTypes = Literal["average", "cls_sep"]
+PoolingTypes = Literal["average", "cls_sep", "p_means"]
 
 
 @dataclass
@@ -400,7 +400,7 @@ def pretrain_transformer_ae(
         prefetch: Optional[int] = 2,
         verbose: Literal[0, 1, 2] = 2
 ) -> History:
-    """Do pre-train
+    """Do pre-train.
 
     Args:
         model_type_name: Model class name as a string.
@@ -412,7 +412,7 @@ def pretrain_transformer_ae(
             or after `validation_freq` iterations (if integer).
         encoder_config: Encoder configuration data.
         decoder_config: Decoder configuration data.
-        pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`.
+        pooling_type: Pooling method, `'average'` or `'cls_sep'` or `'p_means'`. Defaults to `'cls_sep'`.
         kl_factor: A normalizing constant by which the KL loss will be multiplied. This has effect
             only if a VAE is to be trained. Defaults to `1.0`.
         swap_p: Probability of swapping the inputs of the two decoders. Defaults to `0.5`.

@@ -44,7 +44,7 @@ class SentAeEncoder(KModel):
     """The full encoder part of an AE"""
 
     def __init__(self, config: BertConfig,
-                 pooling_type: Literal["average", "cls_sep"] = "cls_sep",
+                 pooling_type: Literal["average", "cls_sep", "p_means"] = "cls_sep",
                  **kwargs) -> None:
         """Layer initializer.
 
@@ -104,7 +104,7 @@ class SentAeEncoder(KModel):
         return pooling_result, encoder_outputs + (embeddings,)
 
     @property
-    def pooling_type(self) -> Literal["average", "cls_sep"]:
+    def pooling_type(self) -> Literal["average", "cls_sep", "p_means"]:
         # noinspection PyTypeChecker
         return self._pooling_type  # The return type is correct, PyCharm may complain because of the `str.lower` call
 
@@ -132,7 +132,7 @@ class SentVaeEncoder(SentAeEncoder):
     def __init__(
             self,
             config: BertConfig,
-            pooling_type: Literal["average", "cls_sep"] = "cls_sep",
+            pooling_type: Literal["average", "cls_sep", "p_means"] = "cls_sep",
             kl_factor: float = 1.0,
             **kwargs
     ) -> None:
