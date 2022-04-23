@@ -421,7 +421,7 @@ class BertBiRnnVaeSmall(BaseDoubleVae):
         super().__init__(enc_config, dec_config, pooling_type=pooling_type,
                          kl_factor=kl_factor, **kwargs)
         self._splitter = tfl.Lambda(lambda x: tf.split(x, 2))
-        self._decoder = ae_double_gru(dec_config)
+        self._decoder = ae_double_gru(dec_config, tok_hidden_size=enc_config.hidden_size)
 
     def call(self, inputs: Tuple[Tuple[tf.Tensor, tf.Tensor], Tuple[tf.Tensor, tf.Tensor]],
              training: Optional[bool] = None) -> tf.Tensor:

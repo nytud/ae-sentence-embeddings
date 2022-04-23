@@ -145,7 +145,8 @@ class SentVaeEncoder(SentAeEncoder):
             **kwargs: Keyword arguments for the parent class.
         """
         super().__init__(config, pooling_type, **kwargs)
-        hidden_size = 2 * config.hidden_size if self.pooling_type == "cls_sep" else config.hidden_size
+        hidden_size = 2 * config.hidden_size if self._pooling_type in {"cls_sep", "p_means"} \
+            else config.hidden_size
         self._post_pooling = PostPoolingLayer(
             hidden_size=hidden_size,
             layer_norm_eps=config.layer_norm_eps,
@@ -339,18 +340,19 @@ def parallel_decoders(
 
 
 # noinspection PyCallingNonCallable
-def ae_double_gru(rnn_config: RnnArgs) -> KModel:
-    """Define parallel decoders with the functional API
+def ae_double_gru(rnn_config: RnnArgs, tok_hidden_size: int) -> KModel:
+    """Define parallel decoders with the functional API.
 
     Args:
-        rnn_config: The RNN configuration dataclass shared by the two decoders
+        rnn_config: The RNN configuration dataclass shared by the two decoders.
+        tok_hidden_size: Embedding size of the input (sub)word vectors.
 
     Returns:
-        A functional Keras model
+        A functional Keras model.
     """
     return parallel_decoders(
         sent_hidden_size=rnn_config.hidden_size,
-        tok_hidden_size=rnn_config.hidden_size,
+        tok_hidden_size=tok_hidden_size,
         vocab_size=rnn_config.vocab_size,
         linear_stddev=rnn_config.initializer_dev,
         decoder_class=AeGRUDecoder,
