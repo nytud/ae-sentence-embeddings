@@ -4,6 +4,7 @@
 
 from typing import Optional, Union, Sequence, Literal
 
+import tensorflow as tf
 from tensorflow.keras.callbacks import History
 from tensorflow.keras.models import load_model
 from tensorflow.keras.losses import SparseCategoricalCrossentropy, BinaryCrossentropy
@@ -138,10 +139,6 @@ def fine_tune(
             model = model_type.from_pretrained(model_ckpt, num_labels=num_labels)
         else:
             model = load_model(model_ckpt)
-        if freeze_encoder:
-            for encoder_layer in (layer for layer in model.layers if
-                                  not layer.name.lower().startswith("classifier")):
-                encoder_layer.trainable = False
         optimizer = AdamW(**adamw_args.to_dict())
         if num_labels > 1:
             metrics = [SparseCategoricalAccuracy()]
@@ -153,6 +150,12 @@ def fine_tune(
             mcc = SparseCategoricalMCC(num_classes=num_labels) if num_labels > 1 \
                 else BinaryMCC()
             metrics.append(mcc)
+        if freeze_encoder:
+            # Call the model with a dummy input to build the layers
+            _ = model((tf.constant([[1, 9, 2]]), tf.constant([[1, 1, 1]])))
+            for encoder_layer in (layer for layer in model.layers if
+                                  not layer.name.lower().startswith("classifier")):
+                encoder_layer.trainable = False
         model.compile(optimizer=optimizer, loss=loss_fn, metrics=metrics)
     history = model.fit(
         x=train_dataset,

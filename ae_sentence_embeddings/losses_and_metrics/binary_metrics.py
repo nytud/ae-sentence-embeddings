@@ -2,7 +2,7 @@
 
 """Add metrics for binary classification tasks"""
 
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import tensorflow as tf
 from tensorflow.keras.metrics import BinaryAccuracy
@@ -62,3 +62,9 @@ class BinaryMCC(MCCoefficient):
         y_pred = tf.nn.sigmoid(y_pred)
         y_pred = tf.concat([1-y_pred, y_pred], axis=-1)
         super().update_state(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
+
+    def get_config(self) -> Dict[str, Any]:
+        """Return a config dictionary for serialization."""
+        base_config = super(BinaryMCC, self).get_config()
+        base_config.pop("num_classes")
+        return base_config
