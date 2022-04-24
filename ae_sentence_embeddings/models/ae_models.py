@@ -6,20 +6,21 @@
 # This is the reason why the corresponding inspection were suppressed for some functions and classes.
 
 from __future__ import annotations
-from typing import Tuple, Union, Optional, Literal, Dict, Any
+
 import pickle
-from warnings import warn
 from abc import ABCMeta, abstractmethod
 from copy import deepcopy
 from types import MappingProxyType
+from typing import Tuple, Union, Optional, Literal, Dict, Any
+from warnings import warn
 
 import tensorflow as tf
 from tensorflow.keras import Model as KModel, layers as tfl
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 
-from ae_sentence_embeddings.argument_handling import RnnLayerArgs, RnnArgs, RegularizedEmbeddingArgs
-from ae_sentence_embeddings.layers import VaeSampling, RandomSwapLayer, RegularizedEmbedding
+from ae_sentence_embeddings.argument_handling import RnnLayerArgs, RnnArgs
+from ae_sentence_embeddings.layers import VaeSampling, RandomSwapLayer
 from ae_sentence_embeddings.models import (
     SentVaeEncoder,
     SentAeDecoder,
@@ -70,7 +71,7 @@ class BaseAe(KModel, metaclass=ABCMeta):
                 warn("Optimizer weights were not found, so the optimizer state was not saved.")
             else:
                 optimizer_weights = tf.keras.backend.batch_get_value(symbolic_weights)
-                with open(optimizer_path, 'wb') as optimizer_f:
+                with open(optimizer_path, "wb") as optimizer_f:
                     pickle.dump(optimizer_weights, optimizer_f)
 
     def load_checkpoint(self, weight_path: str, optimizer_path: Optional[str] = None,
@@ -345,14 +346,6 @@ class BertBiRnnVae(BaseDoubleVae):
         self._splitter = tfl.Lambda(lambda x: tf.split(x, 2))
         self._swapper = RandomSwapLayer(p=swap_p)
         self._decoder = ae_double_transformer_gru(dec_config, rnn_config, num_transformer2gru)
-        dec_embedding_config = RegularizedEmbeddingArgs(
-            vocab_size=dec_config.vocab_size,
-            hidden_size=dec_config.n_embd,
-            initializer_range=dec_config.initializer_range,
-            layer_norm_eps=dec_config.layer_norm_epsilon,
-            hidden_dropout_prob=dec_config.embd_pdrop
-        )
-        self._dec_embedding_layer = RegularizedEmbedding(dec_embedding_config)
 
     def call(self, inputs: Tuple[Tuple[tf.Tensor, tf.Tensor], Tuple[tf.Tensor, tf.Tensor]],
              training: Optional[bool] = None) -> tf.Tensor:
@@ -367,11 +360,11 @@ class BertBiRnnVae(BaseDoubleVae):
             The logits of a probability distribution for next token prediction.
         """
         input_ids, attn_mask = self._get_call_inputs(inputs)
-        mean, log_var, _ = self._encoder((input_ids, attn_mask), training=training)
+        mean, log_var, encoder_hs = self._encoder((input_ids, attn_mask), training=training)
         sents1, sents2 = self._splitter(self._sampler((mean, log_var)))
         sents1, sents2 = self._swapper(((sents1, sents2),), training=training)[0]
 
-        dec_inputs1, dec_inputs2 = self._splitter(self._dec_embedding_layer(input_ids))
+        dec_inputs1, dec_inputs2 = self._splitter(encoder_hs[-1])
         logits = self._decoder((sents1, dec_inputs1, sents2, dec_inputs2), training=training)
         return logits
 
