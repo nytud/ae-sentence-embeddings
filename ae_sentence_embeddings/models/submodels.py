@@ -29,13 +29,12 @@ from ae_sentence_embeddings.layers import (
     CLSPlusSEPPooling,
     AeGRUDecoder,
     AeTransformerGRUDecoder,
-    RegularizedEmbedding,
-    SinusoidalEmbedding
+    TrainablePositionalEmbedding
 )
 from ae_sentence_embeddings.modeling_tools import process_attention_mask, make_decoder_inputs
 from ae_sentence_embeddings.argument_handling import (
     RnnLayerArgs, RnnArgs,
-    PositionalEmbeddingArgs, RegularizedEmbeddingArgs
+    PositionalEmbeddingArgs
 )
 
 
@@ -65,7 +64,7 @@ class SentAeEncoder(KModel):
             self._pooling = PMeansPooling()
         else:
             raise NotImplementedError(f"Unknown pooling type: {pooling_type}")
-        self._embedding_layer = SinusoidalEmbedding(
+        self._embedding_layer = TrainablePositionalEmbedding(
             PositionalEmbeddingArgs.collect_from_dict(config.to_dict()))
         self._transformer_encoder = AeTransformerEncoder(self._transformer_config)
 
@@ -211,7 +210,7 @@ class SentAeDecoder(KModel):
             layer_norm_eps=config.layer_norm_epsilon,
             initializer_range=config.initializer_range
         )
-        self._embedding_layer = SinusoidalEmbedding(embedding_args)
+        self._embedding_layer = TrainablePositionalEmbedding(embedding_args)
         self._out_dense = tfl.Dense(config.vocab_size,
                                     kernel_initializer=TruncatedNormal(stddev=config.initializer_range))
 

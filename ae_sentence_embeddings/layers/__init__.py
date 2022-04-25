@@ -4,7 +4,8 @@ from .transformer_ae_layers import (
     VaeSampling,
     PostPoolingLayer,
     RegularizedEmbedding,
-    SinusoidalEmbedding
+    SinusoidalEmbedding,
+    TrainablePositionalEmbedding
 )
 from .pooling import AveragePoolingLayer, CLSPlusSEPPooling, PMeansPooling
 from .rnn_decoder import AeGRUDecoder, AeGRUCellDecoder, AeTransformerGRUDecoder
