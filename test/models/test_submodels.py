@@ -3,7 +3,7 @@
 """Test encoder or decoder modules"""
 
 import tensorflow as tf
-from numpy.random import rand as np_rand, randint as np_randint
+from numpy.random import rand as np_rand
 
 from ae_sentence_embeddings.models import SentAeGRUDecoder
 from ae_sentence_embeddings.argument_handling import RnnArgs
@@ -19,7 +19,8 @@ class SubmodelTest(tf.test.TestCase):
         sequence_length = 16
         batch_size = 2
         dummy_sent_embedding = tf.constant(np_rand(batch_size, hidden_size), dtype=tf.float32)
-        dummy_ids = tf.constant(np_randint(vocab_size, size=(batch_size, sequence_length)))
+        dummy_token_embeddings = tf.constant(
+            np_rand(batch_size, sequence_length, hidden_size), dtype=tf.float32)
         config = RnnArgs(
             num_rnn_layers=2,
             hidden_size=hidden_size,
@@ -27,7 +28,7 @@ class SubmodelTest(tf.test.TestCase):
         )
         model = SentAeGRUDecoder(config)
         # noinspection PyCallingNonCallable
-        result = model((dummy_sent_embedding, dummy_ids))
+        result = model((dummy_sent_embedding, dummy_token_embeddings))
         self.assertAllEqual((batch_size, sequence_length, vocab_size), result.shape,
                             msg=f"The RNN output is of shape:\n{result.shape}")
 

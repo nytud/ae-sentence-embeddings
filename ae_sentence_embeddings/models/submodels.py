@@ -255,18 +255,10 @@ class SentAeGRUDecoder(KModel):
         self._gru_config = config
         config_dict = config.to_dict()
         vocab_size = config_dict.pop("vocab_size")
-        embedding_init_range = config_dict.pop("initializer_dev")
+        init_range = config_dict.pop("initializer_dev")
         self._decoder = AeGRUDecoder(**config_dict)
-        embedding_layer_config = RegularizedEmbeddingArgs(
-            vocab_size=vocab_size,
-            hidden_size=config.hidden_size,
-            initializer_range=embedding_init_range,
-            layer_norm_eps=config.layernorm_eps,
-            hidden_dropout_prob=config.dropout_rate
-        )
-        self._embedding_layer = RegularizedEmbedding(embedding_layer_config)
-        self._out_dense = tfl.Dense(config.vocab_size,
-                                    kernel_initializer=TruncatedNormal(stddev=config.initializer_dev))
+        self._out_dense = tfl.Dense(
+            vocab_size, kernel_initializer=TruncatedNormal(stddev=init_range))
 
     # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
@@ -274,15 +266,14 @@ class SentAeGRUDecoder(KModel):
         """Call the decoder
 
         Args:
-            inputs: An input embedding tensor of shape `(batch_size, hidden_size)` and
-                    an input token ID tensor of shape `(batch_size, sequence_length, hidden_size)`
-            training: Specifies whether the model is being used in training mode
+            inputs: An sentence embedding tensor of shape `(batch_size, hidden_size)` and
+                an input token embedding tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            training: Specifies whether the model is being used in training mode.
 
         Returns:
             Logits for next token prediction
         """
-        sent_embeddings, input_ids = inputs
-        token_embeddings = self._embedding_layer(input_ids)
+        sent_embeddings, token_embeddings = inputs
         hidden_output = self._decoder((sent_embeddings, token_embeddings), training=training)
         logits = self._out_dense(hidden_output)
         return logits
