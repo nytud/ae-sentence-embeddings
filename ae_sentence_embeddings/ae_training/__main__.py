@@ -31,6 +31,8 @@ def main() -> None:
         swap_p=model_configs.swap_p,
         top_rnn_args=model_configs.top_rnn_args,
         num_transformer2gru=model_configs.num_transformer2gru,
+        model_ckpt=config.get("model_ckpt"),
+        keep_lr_cycling=bool(config.get("keep_lr_cycling")),
         validation_freq=config.get("validation_freq", "epoch"),
         num_epochs=config.get("num_epochs", 2),
         dataset_cache_dir=config.get("dataset_cache_dir"),

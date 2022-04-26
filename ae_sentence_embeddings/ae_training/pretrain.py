@@ -3,12 +3,14 @@
 from dataclasses import dataclass
 from copy import deepcopy
 from os import environ
+from os.path import exists
 from typing import Mapping, Any, Optional, Sequence, Union, Literal, Dict, List
 from inspect import signature
 
 import tensorflow as tf
 from tensorflow.keras.callbacks import History
-from tensorflow_addons.optimizers import AdamW
+from tensorflow.keras.models import load_model
+from tensorflow_addons.optimizers import AdamW, CyclicalLearningRate
 from transformers import BertConfig, OpenAIGPTConfig
 import wandb
 from wandb.keras import WandbCallback
@@ -387,6 +389,7 @@ def pretrain_transformer_ae(
         validation_freq: Union[int, Literal["epoch"]],
         encoder_config: BertConfig,
         decoder_config: Union[OpenAIGPTConfig, RnnArgs],
+        model_ckpt: Optional[str] = None,
         pooling_type: PoolingTypes = "cls_sep",
         kl_factor: float = 1.0,
         swap_p: float = 0.5,
@@ -394,6 +397,7 @@ def pretrain_transformer_ae(
         num_transformer2gru: Optional[int] = None,
         lr_args: Optional[OneCycleArgs] = None,
         momentum_args: Optional[OneCycleArgs] = None,
+        keep_lr_cycling: bool = False,
         dataset_cache_dir: Optional[str] = None,
         devices: Optional[Sequence[str]] = None,
         num_epochs: int = 3,
@@ -406,16 +410,20 @@ def pretrain_transformer_ae(
         model_type_name: Model class name as a string.
         dataset_split_paths: Paths to the dataset splits as a dataclass.
         data_stream_args: Data streaming arguments as a dataclass.
-        adamw_args: AdamW optimizer arguments as a dataclass.
+        adamw_args: AdamW optimizer arguments as a dataclass. It will be ignored if the model
+            is loaded from a checkpoint.
         save_and_log_args: Model checkpoint and logging arguments as a dataclass.
         validation_freq: Specify how often to validate: After each epoch (value `"epoch"`).
             or after `validation_freq` iterations (if integer).
-        encoder_config: Encoder configuration data.
-        decoder_config: Decoder configuration data.
-        pooling_type: Pooling method, `'average'` or `'cls_sep'` or `'p_means'`. Defaults to `'cls_sep'`.
+        encoder_config: Encoder configuration data. It will be ignored if the model is loaded from a checkpoint.
+        decoder_config: Decoder configuration data. It will be ignored if the model is loaded from a checkpoint.
+        model_ckpt: Optional. Path to a checkpoint to continue training.
+        pooling_type: Pooling method, `'average'` or `'cls_sep'` or `'p_means'`. It will be ignored if the model
+            is loaded from a checkpoint. Defaults to `'cls_sep'`.
         kl_factor: A normalizing constant by which the KL loss will be multiplied. This has effect
             only if a VAE is to be trained. Defaults to `1.0`.
-        swap_p: Probability of swapping the inputs of the two decoders. Defaults to `0.5`.
+        swap_p: Probability of swapping the inputs of the two decoders. It will be ignored if the model is loaded
+            from a checkpoint. Defaults to `0.5`.
         top_rnn_args: Optional. Configuration data for RNN layers on the decoder top. It must be
             specified if `BertBiRnnVae` is used. This argument will be ignored otherwise.
         num_transformer2gru: Optional. Number of dense layers connecting the decoder Transformer and
@@ -423,6 +431,8 @@ def pretrain_transformer_ae(
         num_epochs: Number of ae_training epochs. Defaults to `3`.
         lr_args: Optional. Learning rate scheduler arguments as a dataclass.
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
+        keep_lr_cycling: Keep the learning rate cycling. The `initial_rate`, `total_steps` and `cycle_extremum`
+            fields of `lr_args` are required to apply this option. Defaults to `False`.
         dataset_cache_dir: Optional. A cache directory for loading the `dataset`.
         devices: Optional. GPU devices to use, e.g. `\"GPU:0\", \"GPU:1\"`.
         prefetch: Optional. If specified, `prefetch` batches will be prefetched during training.
@@ -433,15 +443,20 @@ def pretrain_transformer_ae(
         The training history object.
     """
     # Configure the model
-    model_type = model_type_map[model_type_name]
-    model_init_kwargs = get_model_kwargs(
-        model_type=model_type,
-        pooling_type=pooling_type,
-        kl_factor=kl_factor,
-        swap_p=swap_p,
-        rnn_args=top_rnn_args,
-        num_transformer2gru=num_transformer2gru
-    )
+    if model_ckpt is None:
+        model_type = model_type_map[model_type_name]
+        model_init_kwargs = get_model_kwargs(
+            model_type=model_type,
+            pooling_type=pooling_type,
+            kl_factor=kl_factor,
+            swap_p=swap_p,
+            rnn_args=top_rnn_args,
+            num_transformer2gru=num_transformer2gru
+        )
+    else:
+        assert exists(model_ckpt), f"The specified checkpoint `{model_ckpt}` does not exist."
+        model_type = None
+        model_init_kwargs = None
 
     # Configure the data
     train_dataset, dev_dataset = get_train_and_validation(
@@ -457,22 +472,41 @@ def pretrain_transformer_ae(
 
     # Configure the callbacks
     fit_validation_data = dev_dataset if validation_freq == "epoch" else None
+    if keep_lr_cycling:
+        assert lr_args is not None, "`lr_args` must be specified to cycle the learning rate."
+        one_cycle_lr_args = None
+    else:
+        one_cycle_lr_args = lr_args
     callbacks = log_and_schedule_setup(
         dev_dataset=dev_dataset,
         save_and_log_args=save_and_log_args,
         validation_freq=validation_freq,
-        lr_args=lr_args,
+        lr_args=one_cycle_lr_args,
         momentum_args=momentum_args
     )
 
     # Configure the training
     strategy = devices_setup(devices)
     with strategy.scope():
-        model = model_type(
-            enc_config=encoder_config, dec_config=decoder_config, **model_init_kwargs)
-        optimizer = AdamW(**adamw_args.to_dict())
-        model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
-                      metrics=[IgnorantSparseCatAccuracy()])
+        if model_ckpt is not None:
+            model = load_model(model_ckpt)
+        else:
+            model = model_type(
+                enc_config=encoder_config, dec_config=decoder_config, **model_init_kwargs)
+            if keep_lr_cycling:
+                lr_schedule = CyclicalLearningRate(
+                    initial_learning_rate=lr_args.initial_rate,
+                    maximal_learning_rate=lr_args.cycle_extremum,
+                    step_size=lr_args.half_cycle,
+                    scale_fn=lambda x: 1/(2.**(x-1))
+                )
+                adamw_dict = adamw_args.to_dict()
+                adamw_dict.pop("learning_rate")
+                optimizer = AdamW(learning_rate=lr_schedule, **adamw_dict)
+            else:
+                optimizer = AdamW(**adamw_args.to_dict())
+            model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
+                          metrics=[IgnorantSparseCatAccuracy()])
     del model_init_kwargs, encoder_config, decoder_config
     history = model.fit(
         x=train_dataset,
