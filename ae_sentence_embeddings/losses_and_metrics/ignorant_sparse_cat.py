@@ -8,6 +8,7 @@ import tensorflow as tf
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
 from tensorflow.keras.losses import Reduction
 from tensorflow.keras.metrics import SparseCategoricalAccuracy
+from tensorflow.keras.utils import register_keras_serializable
 
 ReductionMode = Literal["sum", "sum_over_batch_size", "average"]
 
@@ -25,6 +26,7 @@ def _average_and_sum(loss_tensor: tf.Tensor) -> tf.Tensor:
     return tf.reduce_mean(tf.reduce_sum(loss_tensor, axis=-1), axis=0)
 
 
+@register_keras_serializable(package="ae_sentence_embeddings.losses_and_metrics")
 class IgnorantSparseCatCrossentropy(tf.keras.losses.Loss):
     """Sparse categorical crossentropy that can handle mask values"""
 
@@ -82,6 +84,7 @@ class IgnorantSparseCatCrossentropy(tf.keras.losses.Loss):
 
     def get_config(self) -> Dict[str, Any]:
         base_config = super().get_config()
+        base_config.pop("reduction")
         return {
             **base_config,
             "mask_label": self.mask_label,
@@ -91,6 +94,7 @@ class IgnorantSparseCatCrossentropy(tf.keras.losses.Loss):
         }
 
 
+@register_keras_serializable(package="ae_sentence_embeddings.losses_and_metrics")
 class IgnorantSparseCatAccuracy(SparseCategoricalAccuracy):
     """Sparse categorical accuracy that can handle mask labels"""
 

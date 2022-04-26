@@ -7,8 +7,10 @@ from typing import Optional, Dict, Any
 import tensorflow as tf
 from tensorflow.keras.metrics import BinaryAccuracy
 from tensorflow_addons.metrics import MatthewsCorrelationCoefficient as MCCoefficient
+from tensorflow.keras.utils import register_keras_serializable
 
 
+@register_keras_serializable(package="ae_sentence_embeddings.losses_and_metrics")
 class BinaryLogitAccuracy(BinaryAccuracy):
     """A binary accuracy metric implementation for the cases
     when inputs are logits.
@@ -31,6 +33,7 @@ class BinaryLogitAccuracy(BinaryAccuracy):
         super().update_state(y_true=y_true, y_pred=y_pred, sample_weight=sample_weight)
 
 
+@register_keras_serializable(package="ae_sentence_embeddings.losses_and_metrics")
 class BinaryMCC(MCCoefficient):
     """A class that implements the Matthews Correlation Coefficient
     with a single binary classification `y_true` label.
