@@ -77,22 +77,32 @@ class VaeSampling(tfl.Layer):
 class PostPoolingLayer(tfl.Layer):
     """A layer applied after pooling from the encoder to obtain Gaussian mean and variance values for a VAE"""
 
-    def __init__(self, hidden_size: int, initializer_range: float = 0.02,
-                 layer_norm_eps: float = 1e-12, kl_factor: float = 1.0, **kwargs) -> None:
-        """Initialize the layer
+    def __init__(
+            self,
+            hidden_size: int,
+            initializer_range: float = 0.02,
+            layer_norm_eps: float = 1e-12,
+            kl_factor: float = 1.0,
+            min_kl: float = 0.0,
+            **kwargs
+    ) -> None:
+        """Initialize the layer.
 
         Args:
-            hidden_size: Hidden size of both input and output
-            initializer_range: stddev of a `TruncatedNormal` kernel initializer. Defaults to 0.02
-            layer_norm_eps: Epsilon parameter of layer normalization. Defaults to 1e-12
-            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`
-            **kwargs: Parent class keyword arguments
+            hidden_size: Hidden size of both input and output.
+            initializer_range: stddev of a `TruncatedNormal` kernel initializer. Defaults to `0.02`.
+            layer_norm_eps: Epsilon parameter of layer normalization. Defaults to `1e-12`.
+            kl_factor: A normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`.
+            min_kl: Minimal KL loss value per dimension. This can be useful to avoid posterior collapse.
+                Defaults to `0.0`.
+            **kwargs: Parent class keyword arguments.
         """
         super().__init__(**kwargs)
         self.hidden_size = hidden_size
         self.initializer_range = initializer_range
         self.layer_norm_eps = layer_norm_eps
         self.kl_factor = kl_factor
+        self.min_kl = min_kl
         dense_params = {
             "units": hidden_size,
             "input_shape": (None, hidden_size),
@@ -103,7 +113,7 @@ class PostPoolingLayer(tfl.Layer):
         self.post_pool_layernorm = tfl.LayerNormalization(epsilon=layer_norm_eps)
 
     def call(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
-        """Call the layer
+        """Call the layer.
 
         Args:
             inputs: A tensor of shape `(batch_size, hidden_size)`
@@ -115,7 +125,8 @@ class PostPoolingLayer(tfl.Layer):
         logvar_tensor = self.post_pool_logvar_dense(inputs)
         mean_tensor = self.post_pool_layernorm(mean_tensor)
         logvar_tensor = self.post_pool_layernorm(logvar_tensor)
-        latent_loss_val = tf.multiply(self.kl_factor, kl_loss_func(mean_tensor, logvar_tensor))
+        latent_loss_val = tf.multiply(
+            self.kl_factor, kl_loss_func(mean_tensor, logvar_tensor, min_kl=self.min_kl))
         self.add_loss(latent_loss_val)
         self.add_metric(latent_loss_val, name="KL_loss")
         return mean_tensor, logvar_tensor
@@ -126,7 +137,9 @@ class PostPoolingLayer(tfl.Layer):
             **base_config,
             "hidden_size": self.hidden_size,
             "initializer_range": self.initializer_range,
-            "layer_norm_eps": self.layer_norm_eps
+            "layer_norm_eps": self.layer_norm_eps,
+            "kl_factor": self.kl_factor,
+            "min_kl": self.min_kl
         }
 
 

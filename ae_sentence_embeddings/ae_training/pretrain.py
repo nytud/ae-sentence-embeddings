@@ -62,6 +62,7 @@ class ModelArgs:
     decoder_config: Union[OpenAIGPTConfig, RnnArgs]
     pooling_type: PoolingTypes
     kl_factor: float = 1.0
+    min_kl: float = 0.0
     swap_p: float = 0.5
     top_rnn_args: Optional[RnnLayerArgs] = None
     num_transformer2gru: Optional[int] = None
@@ -204,6 +205,7 @@ def group_model_args_from_flat(config_dict: Mapping[str, Any]) -> ModelArgs:
         top_rnn_args=top_rnn_args,
         pooling_type=config_dict["pooling_type"],
         kl_factor=config_dict.get("kl_factor", 1.),
+        min_kl=config_dict.get("min_kl", 0.0),
         swap_p=config_dict.get("swap_p", 0.5),
         num_transformer2gru=config_dict.get("num_transformer2gru")
     )
@@ -234,17 +236,21 @@ def get_model_kwargs(
         model_type: type,
         pooling_type: PoolingTypes,
         kl_factor: float,
+        min_kl: float,
         swap_p: float,
         rnn_args: Optional[RnnLayerArgs],
         num_transformer2gru: Optional[int],
 ) -> Dict[str, Union[PoolingTypes, float, int, RnnLayerArgs, None]]:
     """Helper function to collect keyword arguments for model initialization"""
-    pooling_type_name, kl_factor_name, swap_p_name = "pooling_type", "kl_factor", "swap_p"
+    pooling_type_name, swap_p_name = "pooling_type", "swap_p"
+    kl_factor_name, min_kl_name = "kl_factor", "min_kl"
     rnn_args_name, num_transformer2gru_name = "rnn_config", "num_transformer2gru"
     model_init_kwargs = {pooling_type_name: pooling_type}
     expected_args = signature(model_type.__init__).parameters.keys()
     if kl_factor_name in expected_args:
         model_init_kwargs[kl_factor_name] = kl_factor
+    if min_kl_name in expected_args:
+        model_init_kwargs[min_kl_name] = min_kl
     if swap_p_name in expected_args:
         model_init_kwargs[swap_p_name] = swap_p
     if rnn_args_name in expected_args:
@@ -392,6 +398,7 @@ def pretrain_transformer_ae(
         model_ckpt: Optional[str] = None,
         pooling_type: PoolingTypes = "cls_sep",
         kl_factor: float = 1.0,
+        min_kl: float = 0.0,
         swap_p: float = 0.5,
         top_rnn_args: Optional[RnnLayerArgs] = None,
         num_transformer2gru: Optional[int] = None,
@@ -422,6 +429,8 @@ def pretrain_transformer_ae(
             is loaded from a checkpoint. Defaults to `'cls_sep'`.
         kl_factor: A normalizing constant by which the KL loss will be multiplied. This has effect
             only if a VAE is to be trained. Defaults to `1.0`.
+        min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. This has effect
+            only if a VAE is to be trained. Defaults to `0.0`.
         swap_p: Probability of swapping the inputs of the two decoders. It will be ignored if the model is loaded
             from a checkpoint. Defaults to `0.5`.
         top_rnn_args: Optional. Configuration data for RNN layers on the decoder top. It must be
@@ -449,6 +458,7 @@ def pretrain_transformer_ae(
             model_type=model_type,
             pooling_type=pooling_type,
             kl_factor=kl_factor,
+            min_kl=min_kl,
             swap_p=swap_p,
             rnn_args=top_rnn_args,
             num_transformer2gru=num_transformer2gru
@@ -488,25 +498,25 @@ def pretrain_transformer_ae(
     # Configure the training
     strategy = devices_setup(devices)
     with strategy.scope():
+        if keep_lr_cycling:
+            lr_schedule = CyclicalLearningRate(
+                initial_learning_rate=lr_args.initial_rate,
+                maximal_learning_rate=lr_args.cycle_extremum,
+                step_size=lr_args.half_cycle,
+                scale_fn=lambda x: 1 / (2. ** (x - 1))
+            )
+            adamw_dict = adamw_args.to_dict()
+            adamw_dict.pop("learning_rate")
+            optimizer = AdamW(learning_rate=lr_schedule, **adamw_dict)
+        else:
+            optimizer = AdamW(**adamw_args.to_dict())
         if model_ckpt is not None:
-            model = load_model(model_ckpt)
+            model = load_model(model_ckpt, compile=False)
         else:
             model = model_type(
                 enc_config=encoder_config, dec_config=decoder_config, **model_init_kwargs)
-            if keep_lr_cycling:
-                lr_schedule = CyclicalLearningRate(
-                    initial_learning_rate=lr_args.initial_rate,
-                    maximal_learning_rate=lr_args.cycle_extremum,
-                    step_size=lr_args.half_cycle,
-                    scale_fn=lambda x: 1/(2.**(x-1))
-                )
-                adamw_dict = adamw_args.to_dict()
-                adamw_dict.pop("learning_rate")
-                optimizer = AdamW(learning_rate=lr_schedule, **adamw_dict)
-            else:
-                optimizer = AdamW(**adamw_args.to_dict())
-            model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
-                          metrics=[IgnorantSparseCatAccuracy()])
+        model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
+                      metrics=[IgnorantSparseCatAccuracy()])
     del model_init_kwargs, encoder_config, decoder_config
     history = model.fit(
         x=train_dataset,

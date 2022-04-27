@@ -137,7 +137,7 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
 
     def __init__(self, enc_config: BertConfig, dec_config: Union[OpenAIGPTConfig, RnnArgs],
                  pooling_type: Literal["cls_sep", "average", "p_means"] = "cls_sep",
-                 kl_factor: float = 1.0, **kwargs) -> None:
+                 kl_factor: float = 1.0, min_kl: float = 0.0, **kwargs) -> None:
         """Initialize the VAE.
 
         Args:
@@ -145,25 +145,37 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
             dec_config: The decoder configuration object.
             pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`.
             kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`.
+            min_kl: Minimal KL loss value per dimension. This can be useful to avoid posterior collapse.
+                Defaults to `0.0`.
             **kwargs: Keyword arguments for the `keras.Model` class.
         """
         super().__init__(enc_config, dec_config, pooling_type=pooling_type, **kwargs)
-        self._encoder = SentVaeEncoder(self._enc_config, pooling_type=pooling_type, kl_factor=kl_factor)
+        self._encoder = SentVaeEncoder(self._enc_config, pooling_type=pooling_type,
+                                       kl_factor=kl_factor, min_kl=min_kl)
         self._sampler = VaeSampling()
 
     @property
     def kl_factor(self) -> float:
         return self._encoder.kl_factor
 
+    @property
+    def min_kl(self) -> float:
+        return self._encoder.min_kl
+
     def set_kl_factor(self, new_kl_factor: float) -> None:
-        """Setter for `kl_factor`"""
+        """Setter for `kl_factor`."""
         self._encoder.set_kl_factor(new_kl_factor)
+
+    def set_min_kl(self, new_min_kl: float) -> None:
+        """Setter for `min_kl`."""
+        self._encoder.set_min_kl(new_min_kl)
 
     def get_config(self) -> Dict[str, Any]:
         base_config = super().get_config()
         return {
             **base_config,
-            "kl_factor": self.kl_factor
+            "kl_factor": self.kl_factor,
+            "min_kl": self.min_kl
         }
 
 
@@ -254,18 +266,19 @@ class TransformerVae(BaseVae):
 
     def __init__(self, enc_config: BertConfig, dec_config: OpenAIGPTConfig,
                  pooling_type: Literal["cls_sep", "average", "p_means"] = "cls_sep",
-                 kl_factor: float = 1.0, **kwargs) -> None:
+                 kl_factor: float = 1.0, min_kl: float = 0.0, **kwargs) -> None:
         """Initialize the VAE.
 
         Args:
-            enc_config: The encoder configuration object
-            dec_config: The decoder configuration object
-            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
-            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`
-            **kwargs: Keyword arguments for the `keras.Model` class
+            enc_config: The encoder configuration object.
+            dec_config: The decoder configuration object.
+            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`.
+            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`.
+            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`.
+            **kwargs: Keyword arguments for the `keras.Model` class.
         """
         super().__init__(enc_config, dec_config, pooling_type=pooling_type,
-                         kl_factor=kl_factor, **kwargs)
+                         kl_factor=kl_factor, min_kl=min_kl, **kwargs)
         self._decoder = SentAeDecoder(self._dec_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
@@ -291,9 +304,9 @@ class BertRnnVae(BaseVae):
 
     def __init__(self, enc_config: BertConfig, dec_config: RnnArgs,
                  pooling_type: Literal["average", "cls_sep"] = "cls_sep",
-                 kl_factor: float = 1.0, **kwargs) -> None:
+                 kl_factor: float = 1.0, min_kl: float = 0.0, **kwargs) -> None:
         super().__init__(enc_config, dec_config, pooling_type=pooling_type,
-                         kl_factor=kl_factor, **kwargs)
+                         kl_factor=kl_factor, min_kl=min_kl, **kwargs)
         self._decoder = SentAeGRUDecoder(self._dec_config)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
@@ -325,23 +338,25 @@ class BertBiRnnVae(BaseDoubleVae):
             num_transformer2gru: int,
             pooling_type: Literal["cls_sep", "average", "p_means"] = "cls_sep",
             kl_factor: float = 1.0,
+            min_kl: float = 0.0,
             swap_p: float = 0.5,
             **kwargs
     ) -> None:
         """Initialize the model
 
         Args:
-            enc_config: a BERT configuration object
-            dec_config: an OpenAIGPT configuration object
-            rnn_config: an RNN layer configuration object for the layers on top of the Transformer decoder
-            num_transformer2gru: number of dense layers connecting the Transformer decoder and the top RNN
-            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`
-            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`
-            swap_p: probability of swapping the inputs of the two decoders. Defaults to `0.5`
-            **kwargs: Keyword arguments for the `keras.Model` class
+            enc_config: a BERT configuration object.
+            dec_config: an OpenAIGPT configuration object.
+            rnn_config: an RNN layer configuration object for the layers on top of the Transformer decoder.
+            num_transformer2gru: number of dense layers connecting the Transformer decoder and the top RNN.
+            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`.
+            kl_factor: a normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`.
+            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`.
+            swap_p: probability of swapping the inputs of the two decoders. Defaults to `0.5`.
+            **kwargs: Keyword arguments for the `keras.Model` class.
         """
         super().__init__(enc_config, dec_config, pooling_type=pooling_type,
-                         kl_factor=kl_factor, **kwargs)
+                         kl_factor=kl_factor, min_kl=min_kl, **kwargs)
         self._rnn_config = deepcopy(rnn_config)
         self._splitter = tfl.Lambda(lambda x: tf.split(x, 2))
         self._swapper = RandomSwapLayer(p=swap_p)
@@ -400,6 +415,7 @@ class BertBiRnnVaeSmall(BaseDoubleVae):
             dec_config: RnnArgs,
             pooling_type: Literal["cls_sep", "average", "p_means"] = "cls_sep",
             kl_factor: float = 1.0,
+            min_kl: float = 0.0,
             **kwargs
     ) -> None:
         """Initialize the model
@@ -409,10 +425,11 @@ class BertBiRnnVaeSmall(BaseDoubleVae):
             dec_config: A decoder configuration object.
             pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`.
             kl_factor: A normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`.
+            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`.
             **kwargs: Keyword arguments for the `keras.Model` class.
         """
         super().__init__(enc_config, dec_config, pooling_type=pooling_type,
-                         kl_factor=kl_factor, **kwargs)
+                         kl_factor=kl_factor, min_kl=min_kl, **kwargs)
         self._splitter = tfl.Lambda(lambda x: tf.split(x, 2))
         self._decoder = ae_double_gru(dec_config, tok_hidden_size=enc_config.hidden_size)
 

@@ -22,6 +22,7 @@ datasets = "^2.0.0"
 [tool.poetry.dev-dependencies]
 poetry2setup = "^1.0.0"
 Sphinx = "^4.5.0"
+jsonlines = "^3.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

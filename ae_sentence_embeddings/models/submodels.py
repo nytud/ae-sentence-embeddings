@@ -133,6 +133,7 @@ class SentVaeEncoder(SentAeEncoder):
             config: BertConfig,
             pooling_type: Literal["average", "cls_sep", "p_means"] = "cls_sep",
             kl_factor: float = 1.0,
+            min_kl: float = 0.0,
             **kwargs
     ) -> None:
         """Initialize the encoder.
@@ -141,6 +142,7 @@ class SentVaeEncoder(SentAeEncoder):
             config: A BERT configuration object.
             pooling_type: Pooling type, `'average'` or `'cls_sep'`. Defaults to `'cls_sep'`.
             kl_factor: A normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`.
+            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`
             **kwargs: Keyword arguments for the parent class.
         """
         super().__init__(config, pooling_type, **kwargs)
@@ -150,6 +152,7 @@ class SentVaeEncoder(SentAeEncoder):
             hidden_size=hidden_size,
             layer_norm_eps=config.layer_norm_eps,
             kl_factor=kl_factor,
+            min_kl=min_kl,
             initializer_range=config.initializer_range
         )
 
@@ -174,15 +177,25 @@ class SentVaeEncoder(SentAeEncoder):
     def kl_factor(self) -> float:
         return self._post_pooling.kl_factor
 
+    @property
+    def min_kl(self) -> float:
+        return self._post_pooling.min_kl
+
     def set_kl_factor(self, new_kl_factor: float) -> None:
         """Setter for `kl_factor`"""
         self._post_pooling.kl_factor = new_kl_factor
+
+    def set_min_kl(self, new_min_kl: float) -> None:
+        """Setter for `min_kl`"""
+        assert new_min_kl >= 0., f"The minimal KL loss must be non-negative, got {new_min_kl}."
+        self._post_pooling.min_kl = new_min_kl
 
     def get_config(self) -> Dict[str, Any]:
         base_config = super().get_config()
         return {
             **base_config,
-            "kl_factor": self._post_pooling.kl_factor
+            "kl_factor": self._post_pooling.kl_factor,
+            "min_kl": self._post_pooling.min_kl
         }
 
 
