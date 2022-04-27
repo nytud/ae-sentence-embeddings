@@ -8,7 +8,7 @@ import tensorflow as tf
 from argparse import ArgumentParser, Namespace
 
 from ae_sentence_embeddings.models import SentVaeEncoder
-from ae_sentence_embeddings.ae_training.model_type_config import model_type_map, multilingual_models
+from ae_sentence_embeddings.ae_training.model_type_config import model_type_map
 from ae_sentence_embeddings.argument_handling import (
     check_if_output_path,
     check_if_file,
@@ -63,13 +63,9 @@ def main() -> None:
         **model_init_kwargs
     )
     # Call the model with dummy inputs so that the weights can be loaded
-    dummy_inputs1 = (tf.keras.Input(shape=(None,), dtype=tf.int32),
-                     tf.keras.Input(shape=(None,), dtype=tf.int32))
-    if model_args.model_type_name in multilingual_models:
-        dummy_inputs2 = (tf.constant([[2, 9, 876, 754, 3]]), tf.constant([[1]*5]))
-        _ = model((dummy_inputs1, dummy_inputs2), training=False)
-    else:
-        _ = model(dummy_inputs1, training=False)
+    dummy_inputs = (tf.keras.Input(shape=(None,), dtype=tf.int32),
+                    tf.keras.Input(shape=(None,), dtype=tf.int32))
+    _ = model(dummy_inputs, training=False)
     model.load_weights(args.checkpoint_path).expect_partial()
     if args.new_kl_factor is not None:
         model.set_kl_factor(args.new_kl_factor)
@@ -88,7 +84,7 @@ def main() -> None:
             min_kl=model_args.min_kl
         )
         # noinspection PyCallingNonCallable
-        _ = encoder(dummy_inputs1, training=False)  # PyCharm may complain, but the model is callable.
+        _ = encoder(dummy_inputs, training=False)  # PyCharm may complain, but the model is callable.
         encoder.set_weights(model.layers[0].get_weights())
         print("The encoder part:")
         encoder.summary()

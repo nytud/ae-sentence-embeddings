@@ -9,8 +9,7 @@ from inspect import signature
 
 import tensorflow as tf
 from tensorflow.keras.callbacks import History
-from tensorflow.keras.models import load_model
-from tensorflow_addons.optimizers import AdamW, CyclicalLearningRate
+from tensorflow_addons.optimizers import AdamW
 from transformers import BertConfig, OpenAIGPTConfig
 import wandb
 from wandb.keras import WandbCallback
@@ -19,7 +18,7 @@ from ae_sentence_embeddings.ae_training.model_type_config import (
     multilingual_models,
     model_type_map,
     rnn_only_decoder_models,
-    transformer_rnn_models
+    vae_models
 )
 from ae_sentence_embeddings.argument_handling import (
     DataStreamArgs,
@@ -29,14 +28,17 @@ from ae_sentence_embeddings.argument_handling import (
     OneCycleArgs,
     RnnLayerArgs,
     RnnArgs,
+    KlArgs,
     camel_to_snake
 )
 from ae_sentence_embeddings.callbacks import (
     AeCustomCheckpoint,
     OneCycleScheduler,
+    CyclicScheduler,
+    KLAnnealer,
     DevEvaluator
 )
-from ae_sentence_embeddings.data import get_train_and_validation, post_batch_feature_pair
+from ae_sentence_embeddings.data import get_train_and_validation
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
 from ae_sentence_embeddings.modeling_tools import get_training_args, read_json
 
@@ -61,11 +63,7 @@ class ModelArgs:
     encoder_config: BertConfig
     decoder_config: Union[OpenAIGPTConfig, RnnArgs]
     pooling_type: PoolingTypes
-    kl_factor: float = 1.0
-    min_kl: float = 0.0
-    swap_p: float = 0.5
-    top_rnn_args: Optional[RnnLayerArgs] = None
-    num_transformer2gru: Optional[int] = None
+    kl_args: KlArgs
 
 
 def _underscored_snake_from_camel(word: Union[str, type]) -> str:
@@ -107,37 +105,6 @@ def devices_setup(
         device_to_use = devices[0] if devices is not None else "/cpu:0"
         strategy = tf.distribute.OneDeviceStrategy(device=device_to_use)
     return strategy
-
-
-def group_train_args_from_structured(args: Mapping[str, Any]) -> GroupedArgs:
-    """Get training-related dataclasses from a single json-style data structure
-
-    Args:
-        args: A json-style data structure
-
-    Returns:
-        Six specialized dataclasses for the arguments of dataset split preparation, data streaming,
-        AdamW optimizer, learning rate scheduling, momentum scheduling and model saving/logging, respectively.
-        They are returned in a `namedtuple`
-    """
-    dataset_split_paths = DataSplitPathArgs.collect_from_dict(args)
-    data_args = DataStreamArgs.collect_from_dict(args)
-    adamw_args = AdamwArgs.collect_from_dict(args)
-    if "one_cycle_args" in args.keys():
-        lr_args = OneCycleArgs.collect_from_dict(args, prefix="lr_")
-        momentum_args = OneCycleArgs.collect_from_dict(args, prefix="momentum_")
-    else:
-        lr_args = None
-        momentum_args = None
-    save_log_args = SaveAndLogArgs.collect_from_dict(args)
-    return GroupedArgs(
-        data_split_path_args=dataset_split_paths,
-        data_stream_args=data_args,
-        adamw_args=adamw_args,
-        lr_one_cycle_args=lr_args,
-        momentum_one_cycle_args=momentum_args,
-        save_and_log_args=save_log_args
-    )
 
 
 def group_train_args_from_flat(args: Mapping[str, Any]) -> GroupedArgs:
@@ -188,26 +155,19 @@ def group_model_args_from_flat(config_dict: Mapping[str, Any]) -> ModelArgs:
     bert_config_pref = "bert_config_"
     encoder_config = BertConfig(**{k[len(bert_config_pref):]: v for k, v in config_dict.items()
                                    if k.startswith(bert_config_pref)})
-    top_rnn_args = None
     if model_type_name in rnn_only_decoder_models:
         decoder_config = RnnArgs.collect_from_dict(config_dict, prefix=_underscored_snake_from_camel(RnnArgs))
     else:
         gpt_config_pref = "openai_gpt_config_"
         decoder_config = OpenAIGPTConfig(**{k[len(gpt_config_pref):]: v for k, v in config_dict.items()
                                             if k.startswith(gpt_config_pref)})
-        if model_type_name in transformer_rnn_models:
-            top_rnn_args = RnnLayerArgs.collect_from_dict(
-                config_dict, prefix=_underscored_snake_from_camel(RnnLayerArgs))
+    kl_args = KlArgs.collect_from_dict(config_dict, prefix=_underscored_snake_from_camel(KlArgs))
     return ModelArgs(
         model_type_name=model_type_name,
         encoder_config=encoder_config,
         decoder_config=decoder_config,
-        top_rnn_args=top_rnn_args,
-        pooling_type=config_dict["pooling_type"],
-        kl_factor=config_dict.get("kl_factor", 1.),
-        min_kl=config_dict.get("min_kl", 0.0),
-        swap_p=config_dict.get("swap_p", 0.5),
-        num_transformer2gru=config_dict.get("num_transformer2gru")
+        kl_args=kl_args,
+        pooling_type=config_dict["pooling_type"]
     )
 
 
@@ -237,50 +197,48 @@ def get_model_kwargs(
         pooling_type: PoolingTypes,
         kl_factor: float,
         min_kl: float,
-        swap_p: float,
-        rnn_args: Optional[RnnLayerArgs],
-        num_transformer2gru: Optional[int],
 ) -> Dict[str, Union[PoolingTypes, float, int, RnnLayerArgs, None]]:
     """Helper function to collect keyword arguments for model initialization"""
-    pooling_type_name, swap_p_name = "pooling_type", "swap_p"
+    pooling_type_name = "pooling_type"
     kl_factor_name, min_kl_name = "kl_factor", "min_kl"
-    rnn_args_name, num_transformer2gru_name = "rnn_config", "num_transformer2gru"
     model_init_kwargs = {pooling_type_name: pooling_type}
     expected_args = signature(model_type.__init__).parameters.keys()
     if kl_factor_name in expected_args:
         model_init_kwargs[kl_factor_name] = kl_factor
     if min_kl_name in expected_args:
         model_init_kwargs[min_kl_name] = min_kl
-    if swap_p_name in expected_args:
-        model_init_kwargs[swap_p_name] = swap_p
-    if rnn_args_name in expected_args:
-        if rnn_args is None:
-            raise ValueError(f"RNN arguments must be specified for {model_type.__name__}")
-        model_init_kwargs[rnn_args_name] = rnn_args
-    if num_transformer2gru_name in expected_args:
-        if num_transformer2gru is None:
-            raise ValueError("Number of dense layers connecting Transformer and RNN layers "
-                             f" must be specified for {model_type.__name__}")
-        model_init_kwargs[num_transformer2gru_name] = num_transformer2gru
     return model_init_kwargs
 
 
 def log_and_schedule_setup(
+        model_type_name: str,
         dev_dataset: tf.data.Dataset,
         save_and_log_args: SaveAndLogArgs,
         validation_freq: Union[int, Literal["epoch"]],
         lr_args: Optional[OneCycleArgs] = None,
         momentum_args: Optional[OneCycleArgs] = None,
+        keep_lr_cycling: bool = False,
+        initial_kl_factor: Optional[float] = None,
+        target_kl_factor: Optional[float] = None,
+        kl_steps: Optional[int] = None
 ) -> List[tf.keras.callbacks.Callback]:
     """Logging and learning rate scheduling setup.
 
     Args:
+        model_type_name: The name of the model type to use.
         dev_dataset: The validation dataset.
         save_and_log_args: Model checkpoint and logging arguments as a dataclass.
         validation_freq: Specify how often to validate: After each epoch (value `"epoch"`).
             or after `validation_freq` iterations (if integer).
         lr_args: Optional. Learning rate scheduler arguments as a dataclass.
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
+        keep_lr_cycling: Keep the learning rate cycling. The `initial_rate`, `total_steps` and `cycle_extremum`
+            fields of `lr_args` are required to apply this option. Defaults to `False`.
+        initial_kl_factor: Optional. The initial KL factor for a VAE. It can be annealed if `target_kl_factor`
+            and `kl_steps` is specified. It has no effect otherwise.
+        target_kl_factor: Optional. The target KL factor for a VAE. It can be annealed if `initial_kl_factor`
+            and `kl_steps` is specified. It has no effect otherwise.
+        kl_steps: The number of steps during which the KL factor will be annealed.
 
     Returns:
         A list of callbacks:
@@ -290,28 +248,41 @@ def log_and_schedule_setup(
             Validation: Only included if validation is expected to be done more frequently
                 than after each epoch. Otherwise, the Keras `fit` method can handle the validation.
             WandB: Only included if the logging tool is `WandB`.
+            KLAnnealer: Only included if all fields of the `kl_args` are specified and it is
+                compatible with the model.
     """
+    assert not (keep_lr_cycling and lr_args is None), "Cycling learning rate was requested but " \
+                                                      "no arguments were provided."
     callbacks = [AeCustomCheckpoint(
         checkpoint_root=save_and_log_args.checkpoint_path,
         save_freq=save_and_log_args.save_freq,
         save_optimizer=save_and_log_args.save_optimizer
     )]
     if validation_freq != "epoch":
-        if save_and_log_args.log_tool is None:
-            raise ValueError(
-                "Please specify a logging tool if validation is to be made more frequently than after each epoch")
+        assert save_and_log_args.log_tool is not None, "Please specify a logging tool if validation is to be made " \
+                                                       "more frequently than after each epoch."
         callbacks.append(DevEvaluator(
             dev_data=dev_dataset,
             logger=save_and_log_args.log_tool,
             log_freq=validation_freq,
         ))
+    wandb_log_freq = save_and_log_args.log_update_freq if \
+        save_and_log_args.log_tool.lower() == "wandb" else None
     if lr_args is not None:
-        lr_scheduler = OneCycleScheduler(
-            schedule_args=lr_args,
-            parameter="lr",
-            log_tool=save_and_log_args.log_tool,
-            log_freq=save_and_log_args.log_update_freq
-        )
+        if keep_lr_cycling:
+            lr_scheduler = CyclicScheduler(
+                initial_rate=lr_args.initial_rate,
+                cycle_extremum=lr_args.cycle_extremum,
+                half_cycle=lr_args.half_cycle,
+                log_freq=wandb_log_freq
+            )
+        else:
+            lr_scheduler = OneCycleScheduler(
+                schedule_args=lr_args,
+                parameter="lr",
+                log_tool=save_and_log_args.log_tool,
+                log_freq=save_and_log_args.log_update_freq
+            )
         callbacks.append(lr_scheduler)
     if momentum_args is not None:
         momentum_scheduler = OneCycleScheduler(
@@ -334,12 +305,16 @@ def log_and_schedule_setup(
                 "Please use `WandB` as a logging tool or a custom `Logging.logger` instance "
                 "(the latter may only log messages from custom callbacks). Other logging "
                 "tools such as Tensorboard are currently not supported.")
+        if all([initial_kl_factor, target_kl_factor, kl_steps]):
+            assert model_type_name in vae_models, "The `KLAnnealer` callback can be applied only to VAE models."
+            callbacks.append(KLAnnealer(initial_kl_factor, target_kl_factor, kl_steps,
+                                        log_freq=wandb_log_freq))
     return callbacks
 
 
 def _check_cycling_total_steps(arg_dict: Dict[str, Any]) -> None:
     """Helper function to check that the number of 1cycle scheduler total steps
-    is the same for the learning rate and the optimizer.
+    is the same for the learning rate and the momentum.
 
     Args:
         arg_dict: The flat dictionary that contains all hyperparameters.
@@ -395,13 +370,9 @@ def pretrain_transformer_ae(
         validation_freq: Union[int, Literal["epoch"]],
         encoder_config: BertConfig,
         decoder_config: Union[OpenAIGPTConfig, RnnArgs],
+        kl_args: KlArgs,
         model_ckpt: Optional[str] = None,
         pooling_type: PoolingTypes = "cls_sep",
-        kl_factor: float = 1.0,
-        min_kl: float = 0.0,
-        swap_p: float = 0.5,
-        top_rnn_args: Optional[RnnLayerArgs] = None,
-        num_transformer2gru: Optional[int] = None,
         lr_args: Optional[OneCycleArgs] = None,
         momentum_args: Optional[OneCycleArgs] = None,
         keep_lr_cycling: bool = False,
@@ -424,19 +395,11 @@ def pretrain_transformer_ae(
             or after `validation_freq` iterations (if integer).
         encoder_config: Encoder configuration data. It will be ignored if the model is loaded from a checkpoint.
         decoder_config: Decoder configuration data. It will be ignored if the model is loaded from a checkpoint.
+        kl_args: Arguments for handling the KL multiplier.
         model_ckpt: Optional. Path to a checkpoint to continue training.
         pooling_type: Pooling method, `'average'` or `'cls_sep'` or `'p_means'`. It will be ignored if the model
             is loaded from a checkpoint. Defaults to `'cls_sep'`.
-        kl_factor: A normalizing constant by which the KL loss will be multiplied. This has effect
-            only if a VAE is to be trained. Defaults to `1.0`.
-        min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. This has effect
             only if a VAE is to be trained. Defaults to `0.0`.
-        swap_p: Probability of swapping the inputs of the two decoders. It will be ignored if the model is loaded
-            from a checkpoint. Defaults to `0.5`.
-        top_rnn_args: Optional. Configuration data for RNN layers on the decoder top. It must be
-            specified if `BertBiRnnVae` is used. This argument will be ignored otherwise.
-        num_transformer2gru: Optional. Number of dense layers connecting the decoder Transformer and
-            RNN layers. It must be specified if `BertBiRnnVae` is used. This argument will be ignored otherwise.
         num_epochs: Number of ae_training epochs. Defaults to `3`.
         lr_args: Optional. Learning rate scheduler arguments as a dataclass.
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
@@ -451,22 +414,20 @@ def pretrain_transformer_ae(
     Returns:
         The training history object.
     """
-    # Configure the model
-    if model_ckpt is None:
-        model_type = model_type_map[model_type_name]
-        model_init_kwargs = get_model_kwargs(
-            model_type=model_type,
-            pooling_type=pooling_type,
-            kl_factor=kl_factor,
-            min_kl=min_kl,
-            swap_p=swap_p,
-            rnn_args=top_rnn_args,
-            num_transformer2gru=num_transformer2gru
-        )
-    else:
+    if model_type_name in multilingual_models:
+        raise NotImplementedError(
+            f"The `pretrain_transformer_ae` function cannot be used to train {model_type_name}.")
+    if model_ckpt is not None:
         assert exists(model_ckpt), f"The specified checkpoint `{model_ckpt}` does not exist."
-        model_type = None
-        model_init_kwargs = None
+
+    # Configure the model
+    model_type = model_type_map[model_type_name]
+    model_init_kwargs = get_model_kwargs(
+        model_type=model_type,
+        pooling_type=pooling_type,
+        kl_factor=kl_args.kl_factor,
+        min_kl=kl_args.min_kl,
+    )
 
     # Configure the data
     train_dataset, dev_dataset = get_train_and_validation(
@@ -476,45 +437,32 @@ def pretrain_transformer_ae(
         set_data_shard=True,
         prefetch=prefetch
     )
-    if model_type_name in multilingual_models:
-        train_dataset = train_dataset.map(post_batch_feature_pair)
-        dev_dataset = dev_dataset.map(post_batch_feature_pair)
 
     # Configure the callbacks
     fit_validation_data = dev_dataset if validation_freq == "epoch" else None
-    if keep_lr_cycling:
-        assert lr_args is not None, "`lr_args` must be specified to cycle the learning rate."
-        one_cycle_lr_args = None
-    else:
-        one_cycle_lr_args = lr_args
     callbacks = log_and_schedule_setup(
+        model_type_name=model_type_name,
         dev_dataset=dev_dataset,
         save_and_log_args=save_and_log_args,
         validation_freq=validation_freq,
-        lr_args=one_cycle_lr_args,
-        momentum_args=momentum_args
+        lr_args=lr_args,
+        keep_lr_cycling=keep_lr_cycling,
+        momentum_args=momentum_args,
+        initial_kl_factor=kl_args.kl_factor,
+        target_kl_factor=kl_args.target_kl_factor,
+        kl_steps=kl_args.kl_steps
     )
 
     # Configure the training
     strategy = devices_setup(devices)
     with strategy.scope():
-        if keep_lr_cycling:
-            lr_schedule = CyclicalLearningRate(
-                initial_learning_rate=lr_args.initial_rate,
-                maximal_learning_rate=lr_args.cycle_extremum,
-                step_size=lr_args.half_cycle,
-                scale_fn=lambda x: 1 / (2. ** (x - 1))
-            )
-            adamw_dict = adamw_args.to_dict()
-            adamw_dict.pop("learning_rate")
-            optimizer = AdamW(learning_rate=lr_schedule, **adamw_dict)
-        else:
-            optimizer = AdamW(**adamw_args.to_dict())
+        optimizer = AdamW(**adamw_args.to_dict())
+        model = model_type(
+            enc_config=encoder_config, dec_config=decoder_config, **model_init_kwargs)
         if model_ckpt is not None:
-            model = load_model(model_ckpt, compile=False)
-        else:
-            model = model_type(
-                enc_config=encoder_config, dec_config=decoder_config, **model_init_kwargs)
+            _ = model((tf.keras.Input(shape=(None,), dtype=tf.int32),
+                       tf.keras.Input(shape=(None,), dtype=tf.int32)))
+            model.load_weights(model_ckpt)
         model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
                       metrics=[IgnorantSparseCatAccuracy()])
     del model_init_kwargs, encoder_config, decoder_config

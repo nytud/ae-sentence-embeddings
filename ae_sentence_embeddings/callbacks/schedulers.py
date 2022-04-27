@@ -7,10 +7,11 @@ from warnings import warn
 import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
 from tensorflow.keras import backend as keras_backend
+from tensorflow_addons.optimizers import CyclicalLearningRate
 import wandb
 
 from ae_sentence_embeddings.argument_handling import LearningRateArgs, OneCycleArgs
-from ae_sentence_embeddings.scheduling import OneCycleSchedule
+from ae_sentence_embeddings.scheduling import OneCycleSchedule, LinearAnneal
 
 
 class OneCycleScheduler(Callback):
@@ -100,3 +101,83 @@ class OneCycleScheduler(Callback):
     @property
     def log_tool(self) -> Union[Logger, Literal["wandb", "WandB"]]:
         return self._log_tool
+
+
+class CyclicScheduler(Callback):
+    """A cyclic learning rate scheduler as a callback."""
+
+    def __init__(
+            self,
+            initial_rate: float,
+            cycle_extremum: float,
+            half_cycle: float,
+            log_freq: Optional[int] = None,
+            name: str = "cyclic_lr_scheduler"
+    ) -> None:
+        """Initialize the callback.
+
+        Args:
+            initial_rate: A starting learning rate.
+            cycle_extremum: The largest learning rate.
+            half_cycle: The number of steps to reach the highest rate in each cycle.
+            log_freq: Optional. How often to log to WandB. If not specified, no logging
+                will be done.
+            name: The callback name. Defaults to `cyclic_lr_scheduler`.
+        """
+        super().__init__()
+        self._log_freq = log_freq
+        self.name = name
+        self._schedule = CyclicalLearningRate(
+            initial_learning_rate=initial_rate,
+            maximal_learning_rate=cycle_extremum,
+            step_size=half_cycle,
+            scale_fn=lambda x: 1 / (2. ** (x - 1))
+        )
+        self._iteration = 0
+
+    def on_train_batch_begin(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        rate = self._schedule(self._iteration)
+        keras_backend.set_value(self.model.optimizer.learning_rate, rate)
+        if self._log_freq is not None and self._iteration % self._log_freq == 0:
+            wandb.log({self.name: rate}, commit=False)
+        self._iteration += 1
+
+
+class KLAnnealer(Callback):
+    """A callback to anneal the KL factor during traning."""
+
+    def __init__(
+            self,
+            initial_rate: float,
+            target_rate: float,
+            total_steps: int,
+            log_freq: Optional[int] = None,
+            name: str = "kl_annealer"
+    ) -> None:
+        """Initialize the callback.
+
+        Args:
+            initial_rate: The starting KL factor.
+            target_rate: The final KL factor.
+            total_steps: The number of steps in which the final KL factor
+                is to be reached.
+            log_freq: Optional. How often to log to WandB. If not specified, no logging
+                will be done.
+            name: The callback name. Defaults to `'kl_annealer'`.
+        """
+        super().__init__()
+        self._log_freq = log_freq
+        self.name = name
+        self._schedule = LinearAnneal(
+            initial_rate=initial_rate,
+            target_rate=target_rate,
+            total_steps=total_steps
+        )
+        self._iteration = 0
+
+    def on_train_batch_begin(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        rate = self._schedule(self._iteration)
+        self.model.set_kl_factor(rate)
+        if self._log_freq is not None and self._iteration % self._log_freq == 0:
+            wandb.log({self.name: self.model.kl_factor}, commit=False)
+        self._iteration += 1

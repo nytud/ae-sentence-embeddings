@@ -389,6 +389,32 @@ class PositionalEmbeddingArgs(RegularizedEmbeddingArgs):
 
 
 @dataclass
+class KlArgs(DeeplArgs):
+    """A dataclass for handling the KL loss term.
+
+    Fields:
+        kl_factor: A constant by which the KL loss will be multiplied. Defaults to `1.0`.
+        min_kl: Element-wise minimum of the KL loss vector, often denoted as lambda. Defaults to `0.0`.
+        target_kl_factor: Optional. A target KL multiplier if `kl_factor` is to be annealed.
+        kl_steps: Optional. The number of steps to make until `target_kl_factor` is reached if
+            `kl_factor` is annealed.
+    """
+    kl_factor: float = 1.0
+    min_kl: float = 0.0
+    target_kl_factor: Optional[float] = None
+    kl_steps: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        """Check arguments."""
+        self.kl_factor = check_if_nonnegative_float(self.kl_factor)
+        self.min_kl = check_if_nonnegative_float(self.min_kl)
+        if self.target_kl_factor is not None:
+            self.target_kl_factor = check_if_nonnegative_float(self.target_kl_factor)
+        if self.kl_steps is not None:
+            self.kl_steps = check_if_positive_int(self.kl_steps)
+
+
+@dataclass
 class DataSplitPathArgs(DeeplArgs):
     """A dataclass for train, dev and test dataset paths
 
@@ -454,6 +480,15 @@ def check_if_positive_float(maybe_positive: Union[str, int, float]) -> float:
         raise ArgumentTypeError(
             f"A positive float is expected, got {maybe_positive}")
     return maybe_positive
+
+
+def check_if_nonnegative_float(maybe_nonnegative: Union[str, int, float]) -> float:
+    """Check if the input `float` is non-negative."""
+    maybe_nonnegative = float(maybe_nonnegative)
+    if maybe_nonnegative < 0:
+        raise ArgumentTypeError(
+            f"A non-negative float is expected, got {maybe_nonnegative}")
+    return maybe_nonnegative
 
 
 def check_if_float_in_interval(

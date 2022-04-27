@@ -84,3 +84,53 @@ def wrap_one_cycle(schedule: OneCycleSchedule) -> Callable[[None], tf.Tensor]:
         return next(values)
 
     return one_cycle_fn
+
+
+class LinearAnneal(LearningRateSchedule):
+    """A schedule that linearly anneals a rate."""
+
+    def __init__(
+            self,
+            initial_rate: float,
+            target_rate: float,
+            total_steps: int,
+            name: str = "LinearAnneal"
+    ) -> None:
+        """Initialize the scheduler.
+
+        Args:
+            initial_rate: An initial rate.
+            target_rate: The target rate.
+            total_steps: Total number of iterations during which the rate will be annealed.
+            name: Name of the operation. Defaults to `'LinearAnneal'`.
+        """
+        super().__init__()
+        self._initial_rate = initial_rate
+        self._target_rate = target_rate
+        self._total_steps = total_steps
+        self.name = name
+
+    def __call__(self, step) -> tf.Tensor:
+        """Call the schedule at each iteration."""
+        with tf.name_scope(self.name) as name:
+            initial_rate = tf.convert_to_tensor(self._initial_rate, name="annealer_initial_rate")
+            dtype = initial_rate.dtype
+            target_rate = tf.cast(self._target_rate, dtype)
+            total_steps = tf.cast(self._total_steps, dtype)
+            bounded_step = tf.minimum(total_steps, tf.cast(step, dtype))
+            relative_step = tf.divide(bounded_step, total_steps)
+            return tf.add(
+                initial_rate,
+                tf.multiply(
+                    tf.subtract(target_rate, initial_rate),
+                    relative_step
+                ), name=name
+            )
+
+    def get_config(self):
+        return {
+            "initial_rate": self._initial_rate,
+            "target_rate": self._target_rate,
+            "total_steps": self._total_steps,
+            "name": self.name
+        }
