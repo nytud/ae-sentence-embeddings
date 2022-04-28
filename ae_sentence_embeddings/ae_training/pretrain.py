@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from copy import deepcopy
 from os import environ
-from os.path import exists
 from typing import Mapping, Any, Optional, Sequence, Union, Literal, Dict, List
 from inspect import signature
 
@@ -399,8 +398,6 @@ def pretrain_transformer_ae(
     if model_type_name in multilingual_models:
         raise NotImplementedError(
             f"The `pretrain_transformer_ae` function cannot be used to train {model_type_name}.")
-    if model_ckpt is not None:
-        assert exists(model_ckpt), f"The specified checkpoint `{model_ckpt}` does not exist."
 
     # Configure the model
     model_type = model_type_map[model_type_name]
