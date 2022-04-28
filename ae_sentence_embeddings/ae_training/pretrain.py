@@ -17,8 +17,7 @@ from wandb.keras import WandbCallback
 from ae_sentence_embeddings.ae_training.model_type_config import (
     multilingual_models,
     model_type_map,
-    rnn_only_decoder_models,
-    vae_models
+    rnn_only_decoder_models
 )
 from ae_sentence_embeddings.argument_handling import (
     DataStreamArgs,
@@ -35,7 +34,6 @@ from ae_sentence_embeddings.callbacks import (
     AeCustomCheckpoint,
     OneCycleScheduler,
     CyclicScheduler,
-    KLAnnealer,
     DevEvaluator
 )
 from ae_sentence_embeddings.data import get_train_and_validation
@@ -211,21 +209,16 @@ def get_model_kwargs(
 
 
 def log_and_schedule_setup(
-        model_type_name: str,
         dev_dataset: tf.data.Dataset,
         save_and_log_args: SaveAndLogArgs,
         validation_freq: Union[int, Literal["epoch"]],
         lr_args: Optional[OneCycleArgs] = None,
         momentum_args: Optional[OneCycleArgs] = None,
-        keep_lr_cycling: bool = False,
-        initial_kl_factor: Optional[float] = None,
-        target_kl_factor: Optional[float] = None,
-        kl_steps: Optional[int] = None
+        keep_lr_cycling: bool = False
 ) -> List[tf.keras.callbacks.Callback]:
     """Logging and learning rate scheduling setup.
 
     Args:
-        model_type_name: The name of the model type to use.
         dev_dataset: The validation dataset.
         save_and_log_args: Model checkpoint and logging arguments as a dataclass.
         validation_freq: Specify how often to validate: After each epoch (value `"epoch"`).
@@ -234,11 +227,6 @@ def log_and_schedule_setup(
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
         keep_lr_cycling: Keep the learning rate cycling. The `initial_rate`, `total_steps` and `cycle_extremum`
             fields of `lr_args` are required to apply this option. Defaults to `False`.
-        initial_kl_factor: Optional. The initial KL factor for a VAE. It can be annealed if `target_kl_factor`
-            and `kl_steps` is specified. It has no effect otherwise.
-        target_kl_factor: Optional. The target KL factor for a VAE. It can be annealed if `initial_kl_factor`
-            and `kl_steps` is specified. It has no effect otherwise.
-        kl_steps: The number of steps during which the KL factor will be annealed.
 
     Returns:
         A list of callbacks:
@@ -248,8 +236,6 @@ def log_and_schedule_setup(
             Validation: Only included if validation is expected to be done more frequently
                 than after each epoch. Otherwise, the Keras `fit` method can handle the validation.
             WandB: Only included if the logging tool is `WandB`.
-            KLAnnealer: Only included if all fields of the `kl_args` are specified and it is
-                compatible with the model.
     """
     assert not (keep_lr_cycling and lr_args is None), "Cycling learning rate was requested but " \
                                                       "no arguments were provided."
@@ -305,10 +291,6 @@ def log_and_schedule_setup(
                 "Please use `WandB` as a logging tool or a custom `Logging.logger` instance "
                 "(the latter may only log messages from custom callbacks). Other logging "
                 "tools such as Tensorboard are currently not supported.")
-        if all([initial_kl_factor, target_kl_factor, kl_steps]):
-            assert model_type_name in vae_models, "The `KLAnnealer` callback can be applied only to VAE models."
-            callbacks.append(KLAnnealer(initial_kl_factor, target_kl_factor, kl_steps,
-                                        log_freq=wandb_log_freq))
     return callbacks
 
 
@@ -441,16 +423,12 @@ def pretrain_transformer_ae(
     # Configure the callbacks
     fit_validation_data = dev_dataset if validation_freq == "epoch" else None
     callbacks = log_and_schedule_setup(
-        model_type_name=model_type_name,
         dev_dataset=dev_dataset,
         save_and_log_args=save_and_log_args,
         validation_freq=validation_freq,
         lr_args=lr_args,
         keep_lr_cycling=keep_lr_cycling,
         momentum_args=momentum_args,
-        initial_kl_factor=kl_args.kl_factor,
-        target_kl_factor=kl_args.target_kl_factor,
-        kl_steps=kl_args.kl_steps
     )
 
     # Configure the training
