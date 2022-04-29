@@ -5,6 +5,7 @@ from copy import deepcopy
 from os import environ
 from typing import Mapping, Any, Optional, Sequence, Union, Literal, Dict, List
 from inspect import signature
+from warnings import warn
 
 import tensorflow as tf
 from tensorflow.keras.callbacks import History
@@ -16,7 +17,8 @@ from wandb.keras import WandbCallback
 from ae_sentence_embeddings.ae_training.model_type_config import (
     multilingual_models,
     model_type_map,
-    rnn_only_decoder_models
+    rnn_only_decoder_models,
+    vae_models
 )
 from ae_sentence_embeddings.argument_handling import (
     DataStreamArgs,
@@ -33,7 +35,8 @@ from ae_sentence_embeddings.callbacks import (
     AeCustomCheckpoint,
     OneCycleScheduler,
     CyclicScheduler,
-    DevEvaluator
+    DevEvaluator,
+    KLAnnealer
 )
 from ae_sentence_embeddings.data import get_train_and_validation
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
@@ -213,7 +216,10 @@ def log_and_schedule_setup(
         validation_freq: Union[int, Literal["epoch"]],
         lr_args: Optional[OneCycleArgs] = None,
         momentum_args: Optional[OneCycleArgs] = None,
-        keep_lr_cycling: bool = False
+        keep_lr_cycling: bool = False,
+        initial_kl: Optional[float] = None,
+        target_kl: Optional[float] = None,
+        kl_steps: Optional[int] = None
 ) -> List[tf.keras.callbacks.Callback]:
     """Logging and learning rate scheduling setup.
 
@@ -226,6 +232,12 @@ def log_and_schedule_setup(
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
         keep_lr_cycling: Keep the learning rate cycling. The `initial_rate`, `total_steps` and `cycle_extremum`
             fields of `lr_args` are required to apply this option. Defaults to `False`.
+        initial_kl: Optional. An initial KL loss multiplier. This has effect only if `kl_steps` and `target_kl`
+            are specified as well.
+        target_kl: Optional. A target KL loss multiplier. This has effect only if `initial_kl` and `kl_steps`
+            are specified as well.
+        kl_steps: Optional. The number of iterations in which the `target_kl` should be reached.
+            This has effect only if `initial_kl` and `target_kl` are specified as well.
 
     Returns:
         A list of callbacks:
@@ -235,13 +247,15 @@ def log_and_schedule_setup(
             Validation: Only included if validation is expected to be done more frequently
                 than after each epoch. Otherwise, the Keras `fit` method can handle the validation.
             WandB: Only included if the logging tool is `WandB`.
+            KLAnnealer: Only if `initial_kl`, `target_kl` and `kl_steps` are specified.
     """
     assert not (keep_lr_cycling and lr_args is None), "Cycling learning rate was requested but " \
                                                       "no arguments were provided."
     callbacks = [AeCustomCheckpoint(
         checkpoint_root=save_and_log_args.checkpoint_path,
         save_freq=save_and_log_args.save_freq,
-        save_optimizer=save_and_log_args.save_optimizer
+        save_optimizer=save_and_log_args.save_optimizer,
+        no_serialization=True
     )]
     if validation_freq != "epoch":
         assert save_and_log_args.log_tool is not None, "Please specify a logging tool if validation is to be made " \
@@ -290,6 +304,13 @@ def log_and_schedule_setup(
                 "Please use `WandB` as a logging tool or a custom `Logging.logger` instance "
                 "(the latter may only log messages from custom callbacks). Other logging "
                 "tools such as Tensorboard are currently not supported.")
+        if all([initial_kl, target_kl, kl_steps]):
+            callbacks.append(KLAnnealer(
+                initial_rate=initial_kl,
+                target_rate=target_kl,
+                total_steps=kl_steps,
+                log_freq=save_and_log_args.log_update_freq
+            ))
     return callbacks
 
 
@@ -426,7 +447,16 @@ def pretrain_transformer_ae(
         lr_args=lr_args,
         keep_lr_cycling=keep_lr_cycling,
         momentum_args=momentum_args,
+        initial_kl=kl_args.kl_factor,
+        target_kl=kl_args.target_kl_factor,
+        kl_steps=kl_args.kl_steps
     )
+    if isinstance(callbacks[-1], KLAnnealer):
+        assert model_type_name in vae_models, f"You can apply `KLAnnealer` only to VAE models!"
+        run_eagerly = True
+        warn("KL factor annealing was turned on. To enable this behavior, the model will run eagerly.")
+    else:
+        run_eagerly = False
 
     # Configure the training
     strategy = devices_setup(devices)
@@ -439,7 +469,7 @@ def pretrain_transformer_ae(
                        tf.keras.Input(shape=(None,), dtype=tf.int32)))
             model.load_weights(model_ckpt)
         model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
-                      metrics=[IgnorantSparseCatAccuracy()])
+                      metrics=[IgnorantSparseCatAccuracy()], run_eagerly=run_eagerly)
     del model_init_kwargs, encoder_config, decoder_config
     history = model.fit(
         x=train_dataset,

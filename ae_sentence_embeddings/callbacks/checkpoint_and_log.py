@@ -7,6 +7,7 @@ from os.path import join as os_path_join, exists
 from time import strftime
 from typing import List, Union, Literal, Dict, Any
 from logging import Logger
+from warnings import warn
 
 import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard, Callback
@@ -18,9 +19,13 @@ from ae_sentence_embeddings.argument_handling import SaveAndLogArgs
 class AeCustomCheckpoint(Callback):
     """A custom class for AE checkpoints"""
 
-    def __init__(self, checkpoint_root: str,
-                 save_freq: Union[Literal["epoch"], int] = "epoch",
-                 save_optimizer: bool = True) -> None:
+    def __init__(
+            self,
+            checkpoint_root: str,
+            save_freq: Union[Literal["epoch"], int] = "epoch",
+            save_optimizer: bool = True,
+            no_serialization: bool = False
+    ) -> None:
         """Initialize the callback.
 
         Args:
@@ -31,14 +36,17 @@ class AeCustomCheckpoint(Callback):
                 saved after every `save_freq` iteration.
             save_optimizer: If `True`, not only the model weights but also the optimizer states
                 will be saved. Defaults to `True`.
+            no_serialization: Do not use the `save` method of the model. This assumes that a `checkpoint`
+                method was implemented. Defaults to `False`.
         """
         super().__init__()
         if not exists(checkpoint_root):
             mkdir(checkpoint_root)
-        self.checkpoint_root = os_path_join(checkpoint_root, strftime("run_%Y_%m_%d-%H_%M_%S"))
+        self._checkpoint_root = os_path_join(checkpoint_root, strftime("run_%Y_%m_%d-%H_%M_%S"))
         self.save_freq = save_freq
         self.save_optimizer = save_optimizer
-        self.batch_id = 0
+        self._batch_id = 0
+        self.no_serialization = no_serialization
 
     def _make_checkpoint(self, subdir_name: Union[int, str]) -> None:
         """Helper function to create checkpoints.
@@ -46,9 +54,16 @@ class AeCustomCheckpoint(Callback):
         Args:
             subdir_name: A subdirectory for the checkpoint files
         """
-        subdir_path = os_path_join(self.checkpoint_root, subdir_name)
+        subdir_path = os_path_join(self._checkpoint_root, subdir_name)
         weight_dir = os_path_join(subdir_path, f"weight_{subdir_name}.ckpt")
-        self.model.save(weight_dir, include_optimizer=self.save_optimizer)
+        if not self.no_serialization:
+            self.model.save(weight_dir, include_optimizer=self.save_optimizer)
+        elif hasattr(self.model, "checkpoint"):
+            optimizer_path = os_path_join(subdir_path, f"optim_{subdir_name}.pkl") if self.save_optimizer else None
+            self.model.checkpoint(weight_dir, optimizer_path=optimizer_path)
+        else:
+            self.model.save_weights(weight_dir)
+            warn("The model does not implement a `checkpoint` method. The optimizer state was not saved.")
 
     def on_epoch_end(self, epoch: int, logs=None) -> None:
         """Save model if `save_freq == "epoch"`"""
@@ -59,13 +74,13 @@ class AeCustomCheckpoint(Callback):
         """Create checkpoint or pass according to `save_freq`.
         Update the global batch ID (number of batch independently of the epoch)
         """
-        self.batch_id += 1
-        if isinstance(self.save_freq, int) and self.batch_id % self.save_freq == 0:
-            self._make_checkpoint(f"step_{self.batch_id}")
+        self._batch_id += 1
+        if isinstance(self.save_freq, int) and self._batch_id % self.save_freq == 0:
+            self._make_checkpoint(f"step_{self._batch_id}")
 
     def on_train_end(self, logs=None) -> None:
         """Save model on training end if not saved yet"""
-        if isinstance(self.save_freq, int) and self.batch_id % self.save_freq != 0:
+        if isinstance(self.save_freq, int) and self._batch_id % self.save_freq != 0:
             self._make_checkpoint("train_end")
 
 
