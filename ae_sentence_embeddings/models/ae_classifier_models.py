@@ -29,6 +29,7 @@ class SentVaeClassifier(SentVaeEncoder):
             num_labels: int,
             pooling_type: Literal["average", "cls_sep"] = "cls_sep",
             kl_factor: float = 0.,
+            min_kl: float = 0.,
             **kwargs
     ) -> None:
         """Initialize the encoder and the classifier head.
@@ -41,12 +42,13 @@ class SentVaeClassifier(SentVaeEncoder):
             pooling_type: Pooling type, `'average'` or `'cls_sep'`. Defaults to `'cls_sep'`.
             kl_factor: A normalizing constant by which the KL loss will be multiplied.
                 Set it to zero if the KL loss should be ignored. Defaults to `0.0`.
+            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`.
             **kwargs: Keyword arguments passed to the `keras.Model` initializer.
         """
         if num_labels <= 0:
             raise ValueError(f"The number of labels must be a positive integer, got {num_labels}")
         super().__init__(config=config, pooling_type=pooling_type,
-                         kl_factor=kl_factor, **kwargs)
+                         kl_factor=kl_factor, min_kl=min_kl, **kwargs)
         self._num_labels = num_labels
         classifier_dropout = config.classifier_dropout if config.classifier_dropout is not None \
             else config.hidden_dropout_prob
@@ -75,7 +77,7 @@ class SentVaeClassifier(SentVaeEncoder):
 
     @classmethod
     def from_pretrained(cls, ckpt_path: str, num_labels: int = 1,
-                        kl_factor: Optional[float] = 0.) -> SentVaeClassifier:
+                        kl_factor: Optional[float] = 0., min_kl: Optional[float] = 0.) -> SentVaeClassifier:
         """Load the encoder weights from a pre-trained model.
 
         Args:
@@ -83,6 +85,7 @@ class SentVaeClassifier(SentVaeEncoder):
             num_labels: Number of classification labels. Defaults to `1`.
             kl_factor: A value which will override the KL multiplier of the
                 pre-trained model. Set it to `None` to omit this. Defaults to `0.`.
+            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`.
 
         Returns:
             A model whit pre-trained encoder weights and newly initialized classifier weights.
@@ -96,10 +99,11 @@ class SentVaeClassifier(SentVaeEncoder):
         pre_trained_encoder_config = BertConfig(**pre_trained_config["encoder_config"])
         pre_trained_encoder_config.num_labels = num_labels
         new_kl_factor = kl_factor if kl_factor is not None else pre_trained_config["kl_factor"]
+        new_min_kl = min_kl if min_kl is not None else pre_trained_config["min_kl"]
 
         # create the new model
         new_model = cls(pre_trained_encoder_config, pooling_type=pre_trained_config["pooling_type"],
-                        kl_factor=new_kl_factor, num_labels=num_labels)
+                        kl_factor=new_kl_factor, min_kl=new_min_kl, num_labels=num_labels)
         # build the model by calling it on dummy inputs
         dummy_inputs = (tf.constant([[0, 1, 2]]), tf.constant([[1, 1, 1]]))
         # noinspection PyCallingNonCallable

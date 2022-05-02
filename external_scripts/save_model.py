@@ -12,7 +12,7 @@ from ae_sentence_embeddings.ae_training.model_type_config import model_type_map
 from ae_sentence_embeddings.argument_handling import (
     check_if_output_path,
     check_if_file,
-    check_if_positive_float
+    check_if_nonnegative_float
 )
 from ae_sentence_embeddings.ae_training.pretrain import (
     group_model_args_from_flat,
@@ -33,9 +33,9 @@ def get_model_save_args() -> Namespace:
                                                  "that was used for pre-training.")
     parser.add_argument("--save-path", dest="save_path", type=check_if_output_path,
                         help="Path to a directory where the Keras serialized model can be saved.")
-    parser.add_argument("--new-kl-factor", dest="new_kl_factor", type=check_if_positive_float,
+    parser.add_argument("--new-kl-factor", dest="new_kl_factor", type=check_if_nonnegative_float,
                         help="Optional. Set a new KL loss factor for a VAE.")
-    parser.add_argument("--new-min-kl", dest="new_min_kl", type=check_if_positive_float,
+    parser.add_argument("--new-min-kl", dest="new_min_kl", type=check_if_nonnegative_float,
                         help="Optional. Set a minimal KL value for a VAE.")
     parser.add_argument("--save-full-model", dest="save_full_model", action="store_true",
                         help="Specify this flag to save the full model, not only the encoder part.")
@@ -48,14 +48,15 @@ def main() -> None:
     config = flatten_nested_dict(read_json(args.config_path))
     model_args = group_model_args_from_flat(config)
     model_type = model_type_map[model_args.model_type_name]
+    if args.new_kl_factor is not None:
+        model_args.kl_args.kl_factor = args.new_kl_factor
+    if args.new_min_kl is not None:
+        model_args.kl_args.min_kl = args.new_min_kl
     model_init_kwargs = get_model_kwargs(
         model_type=model_type,
         pooling_type=model_args.pooling_type,
-        kl_factor=model_args.kl_factor,
-        min_kl=model_args.min_kl,
-        swap_p=model_args.swap_p,
-        rnn_args=model_args.top_rnn_args,
-        num_transformer2gru=model_args.num_transformer2gru
+        kl_factor=model_args.kl_args.kl_factor,
+        min_kl=model_args.kl_args.min_kl
     )
     model = model_type(
         enc_config=model_args.encoder_config,
@@ -67,10 +68,6 @@ def main() -> None:
                     tf.keras.Input(shape=(None,), dtype=tf.int32))
     _ = model(dummy_inputs, training=False)
     model.load_weights(args.checkpoint_path).expect_partial()
-    if args.new_kl_factor is not None:
-        model.set_kl_factor(args.new_kl_factor)
-    if args.new_min_kl is not None:
-        model.set_min_kl(args.new_min_kl)
     print("The full autoencoder:")
     model.summary()
     if args.save_full_model:
@@ -80,8 +77,8 @@ def main() -> None:
         encoder = SentVaeEncoder(
             config=model_args.encoder_config,
             pooling_type=model_args.pooling_type,
-            kl_factor=model_args.kl_factor,
-            min_kl=model_args.min_kl
+            kl_factor=model_args.kl_args.kl_factor,
+            min_kl=model_args.kl_args.min_kl
         )
         # noinspection PyCallingNonCallable
         _ = encoder(dummy_inputs, training=False)  # PyCharm may complain, but the model is callable.
