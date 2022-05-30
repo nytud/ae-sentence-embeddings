@@ -17,28 +17,40 @@ class KLDivergenceRegularizer(Regularizer):
     """A KL regularizer with beta annealing. Based on
     https://stackoverflow.com/questions/62211309
     """
-    def __init__(self, iters: Union[int, tf.Variable], start: int, warmup_iters: int) -> None:
+    def __init__(
+            self,
+            iters: Union[int, tf.Variable],
+            warmup_iters: int,
+            start: int = 0,
+            min_kl: float = 0.,
+    ) -> None:
         """Initialize the regularizer.
 
         Args:
             iters: The actual iteration. It should be set to `optimizer.iterations`.
                 When the model is serialized, the constant value `0` will be passed!
-            start: The iteration when the warmup starts.
-            warmup_iters: The iteration when beta equals to `1` and the warmup stops.
+            warmup_iters: The number of warmup steps.
+            start: The iteration when the warmup starts. Defaults to `0`.
+            min_kl: Minimal KL loss value per dimension. It takes effect only when `beta == 1`.
+                Defaults to `0.0`.
         """
         assert start < warmup_iters, f"`start` must be smaller than `warmup_iters`."
         super(KLDivergenceRegularizer, self).__init__()
         self._iters = iters
-        self._start = start
         self._warmup_iters = warmup_iters
+        self._start = start
+        self._min_kl = min_kl
 
-    def __call__(self, activation: Tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
+    def __call__(self, activation: Tuple[tf.Tensor, tf.Tensor, ...]) -> tf.Tensor:
         """Calculate the actual KL loss."""
-        mu, log_var = activation
-        iteration = tf.cond(self._iters >= self._start, lambda: self._iters, lambda: 0.)
+        mu, log_var, *_ = activation
+        iteration = tf.cond(self._iters > self._start,
+                            lambda: self._iters - self._start, lambda: 0.)
         beta = tf.minimum(iteration / self._warmup_iters, 1.)
+        min_kl = tf.cond(beta == 1., lambda: self._min_kl, lambda: 0.)
         # noinspection PyTypeChecker
-        return -0.5 * beta * tf.reduce_sum(1 + log_var - tf.square(mu) - tf.exp(log_var))
+        kl_loss = -0.5 * beta * tf.reduce_sum(1 + log_var - tf.square(mu) - tf.exp(log_var))
+        return tf.maximum(min_kl, kl_loss)
 
     def get_config(self) -> Dict[str, int]:
         """Serialize the regularizer.

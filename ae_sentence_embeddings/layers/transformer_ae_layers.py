@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """A module for Transformer-based VAE layers"""
 
 from __future__ import annotations
@@ -13,7 +15,6 @@ from transformers.models.openai.modeling_tf_openai import TFBlock
 from transformers.modeling_tf_utils import keras_serializable
 
 from ae_sentence_embeddings.argument_handling import PositionalEmbeddingArgs, RegularizedEmbeddingArgs
-from ae_sentence_embeddings.losses_and_metrics import kl_loss_func
 
 
 @keras_serializable  # Note that this decorator adds the `get_config` method
@@ -81,9 +82,6 @@ class PostPoolingLayer(tfl.Layer):
             self,
             hidden_size: int,
             initializer_range: float = 0.02,
-            layer_norm_eps: float = 1e-12,
-            kl_factor: float = 1.0,
-            min_kl: float = 0.0,
             **kwargs
     ) -> None:
         """Initialize the layer.
@@ -91,18 +89,11 @@ class PostPoolingLayer(tfl.Layer):
         Args:
             hidden_size: Hidden size of both input and output.
             initializer_range: stddev of a `TruncatedNormal` kernel initializer. Defaults to `0.02`.
-            layer_norm_eps: Epsilon parameter of layer normalization. Defaults to `1e-12`.
-            kl_factor: A normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`.
-            min_kl: Minimal KL loss value per dimension. This can be useful to avoid posterior collapse.
-                Defaults to `0.0`.
             **kwargs: Parent class keyword arguments.
         """
         super().__init__(**kwargs)
         self.hidden_size = hidden_size
         self.initializer_range = initializer_range
-        self.layer_norm_eps = layer_norm_eps
-        self.kl_factor = kl_factor
-        self.min_kl = min_kl
         dense_params = {
             "units": hidden_size,
             "input_shape": (None, hidden_size),
@@ -110,7 +101,6 @@ class PostPoolingLayer(tfl.Layer):
         }
         self.post_pool_mean_dense = tfl.Dense(**dense_params, name="post_pool_mean_dense")
         self.post_pool_logvar_dense = tfl.Dense(**dense_params, name="post_pool_logvar_dense")
-        self.post_pool_layernorm = tfl.LayerNormalization(epsilon=layer_norm_eps)
 
     def call(self, inputs: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
         """Call the layer.
@@ -123,12 +113,6 @@ class PostPoolingLayer(tfl.Layer):
         """
         mean_tensor = self.post_pool_mean_dense(inputs)
         logvar_tensor = self.post_pool_logvar_dense(inputs)
-        mean_tensor = self.post_pool_layernorm(mean_tensor)
-        logvar_tensor = self.post_pool_layernorm(logvar_tensor)
-        latent_loss_val = tf.multiply(
-            self.kl_factor, kl_loss_func(mean_tensor, logvar_tensor, min_kl=self.min_kl))
-        self.add_loss(latent_loss_val)
-        self.add_metric(latent_loss_val, name="KL_loss")
         return mean_tensor, logvar_tensor
 
     def get_config(self) -> Dict[str, Any]:
@@ -137,9 +121,6 @@ class PostPoolingLayer(tfl.Layer):
             **base_config,
             "hidden_size": self.hidden_size,
             "initializer_range": self.initializer_range,
-            "layer_norm_eps": self.layer_norm_eps,
-            "kl_factor": self.kl_factor,
-            "min_kl": self.min_kl
         }
 
 
