@@ -8,14 +8,13 @@ from inspect import signature
 from warnings import warn
 
 import tensorflow as tf
-from tensorflow.keras.callbacks import History
+from tensorflow.python.keras.callbacks import History
 from tensorflow_addons.optimizers import AdamW
 from transformers import BertConfig, OpenAIGPTConfig
 import wandb
 from wandb.keras import WandbCallback
 
 from ae_sentence_embeddings.ae_training.model_type_config import (
-    multilingual_models,
     model_type_map,
     rnn_only_decoder_models,
     vae_models
@@ -416,10 +415,6 @@ def pretrain_transformer_ae(
     Returns:
         The training history object.
     """
-    if model_type_name in multilingual_models:
-        raise NotImplementedError(
-            f"The `pretrain_transformer_ae` function cannot be used to train {model_type_name}.")
-
     # Configure the model
     model_type = model_type_map[model_type_name]
     model_init_kwargs = get_model_kwargs(

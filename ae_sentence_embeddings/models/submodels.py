@@ -8,8 +8,9 @@ Defining them as a model allows to use them separately after pre-training
 # This is the reason why the corresponding inspection were suppressed for some functions and classes.
 
 from __future__ import annotations
-from typing import Tuple, Optional, Literal, Dict, Any
+from typing import Tuple, Optional, Literal, Dict, Any, Union
 from types import MappingProxyType
+from copy import deepcopy
 
 import tensorflow as tf
 from tensorflow.keras import Model as KModel
@@ -31,6 +32,7 @@ from ae_sentence_embeddings.layers import (
     AeTransformerGRUDecoder,
     TrainablePositionalEmbedding
 )
+from ae_sentence_embeddings.regularizers import KLDivergenceRegularizer
 from ae_sentence_embeddings.modeling_tools import process_attention_mask, make_decoder_inputs
 from ae_sentence_embeddings.argument_handling import (
     RnnLayerArgs, RnnArgs,
@@ -132,6 +134,7 @@ class SentVaeEncoder(SentAeEncoder):
             self,
             config: BertConfig,
             pooling_type: Literal["average", "cls_sep", "p_means"],
+            reg_args: Dict[str, Union[tf.Variable, int]],
             **kwargs
     ) -> None:
         """Initialize the encoder.
@@ -139,6 +142,7 @@ class SentVaeEncoder(SentAeEncoder):
         Args:
             config: A BERT configuration object.
             pooling_type: Pooling type, `'average'` or `'cls_sep'`.
+            reg_args: KL loss regularization arguments.
             **kwargs: Keyword arguments for the parent class.
         """
         super().__init__(config, pooling_type, **kwargs)
@@ -147,7 +151,15 @@ class SentVaeEncoder(SentAeEncoder):
         self._post_pooling = PostPoolingLayer(
             hidden_size=hidden_size,
             initializer_range=config.initializer_range,
+            activity_regularizer=KLDivergenceRegularizer(**reg_args)
         )
+        # If the `iters` key in the KL arguments dict if a `tf.Variable`, set it to `0`.
+        iters_name = "iters"
+        iters = reg_args[iters_name]
+        if isinstance(iters, tf.Variable):
+            iters = 0
+        self._reg_args = {k: v for k, v in reg_args.items() if k != iters_name}
+        self._reg_args[iters_name] = iters
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Tuple[tf.Tensor]]:
@@ -165,6 +177,23 @@ class SentVaeEncoder(SentAeEncoder):
         # noinspection PyCallingNonCallable
         post_pooling_mean, post_pooling_logvar = self._post_pooling(pooling_output)
         return post_pooling_mean, post_pooling_logvar, encoder_outputs
+
+    @property
+    def reg_args(self) -> MappingProxyType:
+        """Get regularization arguments. The `iters` argument will be set to zero."""
+        return MappingProxyType(self._reg_args)
+
+    def get_config(self) -> Dict[str, Any]:
+        """Get serialization configuration.
+        Note that the regularization in a serialized model has no effect.
+        This is due to the fact that the `iters` argument of the KL regularizer
+        will be set to the constant `0`.
+        """
+        base_config = super(SentVaeEncoder, self).get_config()
+        return {
+            **base_config,
+            "reg_args": deepcopy(self._reg_args)
+        }
 
 
 # noinspection PyAbstractClass
