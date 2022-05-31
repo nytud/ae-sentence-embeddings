@@ -4,7 +4,7 @@ The module also contains helper tools for argparse
 
 from __future__ import annotations
 from argparse import ArgumentTypeError
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Dict, Any, Tuple, Union, Optional, Sequence, Callable, Literal
 from inspect import signature
 from logging import Logger
@@ -17,7 +17,7 @@ from transformers import BertConfig, OpenAIGPTConfig
 
 
 def _subst_func(word: str, pattern: re.Pattern, repl: str) -> str:
-    """A function for regexp replacements. Input returned in lowercase"""
+    """A function for regexp replacements. Input returned in lowercase."""
     return pattern.sub(repl, word).lower()
 
 
@@ -25,7 +25,7 @@ camel_to_snake = partial(_subst_func, pattern=re.compile(r'(?<!^)([A-Z])'), repl
 
 
 class DeeplArgs(metaclass=ABCMeta):
-    """Base class for training arguments. Subclass it and add fields to use its methods"""
+    """Base class for training arguments. Subclass it and add fields to use its methods."""
 
     def __init__(self, **kwargs):
         # Making `__init__` an `abstractmethod` would raise a `TypeError` if the child classes are
@@ -64,16 +64,10 @@ class DeeplArgs(metaclass=ABCMeta):
 
 @dataclass  # Note that the `@dataclass` decorator does implement the `__init__` method
 class TokenizationArgs(DeeplArgs):
-    """A dataclass for tokenization arguments
-
-    Fields:
-        text_dataset_path: Path to a text file
-        tokenizer: Tokenizer name or path
-        tokenized_output_path: Output dataset path
-    """
-    text_dataset_path: str
-    tokenizer: str
-    tokenized_output_path: str
+    """A dataclass for tokenization arguments."""
+    text_dataset_path: str = field(metadata={"help": "Path to a text file."})
+    tokenizer: str = field(metadata={"help": "Tokenizer name or path."})
+    tokenized_output_path: str = field(metadata={"help": "Output dataset path."})
 
     def __post_init__(self) -> None:
         """Check arguments"""
@@ -83,29 +77,55 @@ class TokenizationArgs(DeeplArgs):
 
 @dataclass
 class DataStreamArgs(DeeplArgs):
-    """A dataclass for data streaming arguments
-
-    Fields:
-        input_padding: The values used for padding the input features. It can be specified as a
-            single integer if there is only one input feature. Defaults to `(0, 0)`
-        target_padding: The values used for padding the target token IDs. It can be specified as a
-            single integer if there is only one input feature. Defaults to `-1`.
-        batch_size: Batch size. This should be a single integer even if bucketing is used. In this case, bucket batch
-            sizes are calculated with the formula `batch_size // 2**n` Defaults to `32`.
-        shuffling_buffer_size: Optional. Buffer size for data shuffling before batching. If not specified,
-            shuffling cannot be applied
-        num_buckets: Optional. Number of batch buckets. If not specified, bucketing cannot be used. It can take effect
-            only if `first_bucket_boundary` is specified as well.
-        first_bucket_boundary: Optional. Non-inclusive upper boundary of the first batch bucket. If not specified,
-            bucketing will not be used. It can take effect only if `num_buckets` is specified as well.
-            The nth bucket boundary will be calculated as `(first_bucket_boundary-1) * 2**n + 1`
-    """
-    input_padding: Union[Sequence[int], int] = (0, 0)
-    target_padding: Union[Sequence[int], int] = -1
-    batch_size: int = 32
-    shuffling_buffer_size: Optional[int] = None
-    num_buckets: Optional[int] = None
-    first_bucket_boundary: Optional[int] = None
+    """A dataclass for data streaming arguments."""
+    input_padding: Union[Sequence[int], int] = field(
+        default=(0, 0),
+        metadata={
+            "help": "The values used for padding the input features. "
+                    "It can be specified as a single integer if there is "
+                    "only one input feature."
+        }
+    )
+    target_padding: Union[Sequence[int], int] = field(
+        default=-1,
+        metadata={
+            "help": "The values used for padding the target token IDs. "
+                    "It can be specified as a single integer if there is "
+                    "only one input feature."
+        }
+    )
+    batch_size: int = field(
+        default=32,
+        metadata={
+            "help": "Batch size. This must be a single integer even if bucketing is used. "
+                    "In this case, bucket batch sizes are calculated with the formula "
+                    "`batch_size // 2**n`."
+        }
+    )
+    shuffling_buffer_size: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Buffer size for data shuffling before batching. "
+                    "If not specified, shuffling cannot be applied."
+        }
+    )
+    num_buckets: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Number of batch buckets. If not specified, "
+                    "bucketing cannot be used. It can take effect "
+                    "only if `first_bucket_boundary` is specified as well."
+        }
+    )
+    first_bucket_boundary: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Non-inclusive upper boundary of the first batch bucket. "
+                    "If not specified, bucketing will not be used. It can take effect "
+                    "only if `num_buckets` is specified as well. The nth bucket boundary "
+                    "will be calculated as `(first_bucket_boundary-1) * 2**n + 1`"
+        }
+    )
 
     def __post_init__(self) -> None:
         """Check arguments"""
@@ -124,23 +144,39 @@ class DataStreamArgs(DeeplArgs):
 @dataclass
 class LearningRateArgs(DeeplArgs):
     """A dataclass for the arguments of a one-cycle learning rate scheduler. It can also contain the learning rate
-    only if a one-cycle scheduler is not required
-
-    Fields:
-        learning_rate: A starting learning rate
-        scheduled_iterations: Optional. Number of iterations which allow the scheduler to modify the learning rate. The
-            automatic specification of the optional fields below requires this field to be specified
-        cycle_end: Optional. The iteration at which the learning rate retakes its starting value. If not specified,
-            it will be defined as half the `scheduled iterations`
-        max_rate: Optional. Maximal learning rate. If not specified, it will be set to `10 * learning_rate`
-        last_rate: Optional. Learning rate when reaching `scheduled_iterations`. If not specified, it will be set to
-            `learning_rate / 100`
+    only if a one-cycle scheduler is not required.
     """
-    learning_rate: float
-    scheduled_iterations: Optional[int] = None
-    cycle_end: Optional[int] = None
-    max_rate: Optional[float] = None
-    last_rate: Optional[float] = None
+    learning_rate: float = field(metadata={"help": "A starting learning rate."})
+    scheduled_iterations: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Number of iterations which allow the scheduler "
+                    "to modify the learning rate. The automatic specification "
+                    "of the optional fields below requires this field to be specified."
+        }
+    )
+    cycle_end: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "The iteration at which the learning rate retakes "
+                    "its starting value. If not specified, it will be "
+                    "defined as half the `scheduled iterations`"
+        }
+    )
+    max_rate: Optional[float] = field(
+        default=None,
+        metadata={
+            "help": "Maximal learning rate. If not specified, "
+                    "it will be set to `10 * learning_rate`."
+        }
+    )
+    last_rate: Optional[float] = field(
+        default=None,
+        metadata={
+            "help": "Learning rate when reaching `scheduled_iterations`. "
+                    "If not specified, it will be set to `learning_rate / 100`."
+        }
+    )
 
     def __post_init__(self) -> None:
         """Check arguments and specify values automatically if possible and necessary"""
@@ -177,22 +213,24 @@ class LearningRateArgs(DeeplArgs):
 @dataclass
 class OneCycleArgs(DeeplArgs):
     """A dataclass for the arguments of a one-cycle learning rate scheduler. It can also contain the learning rate
-    only if a one-cycle scheduler is not required
-
-    Fields:
-        initial_rate: An initial rate (learning rate or beta_1 momentum factor)
-        total_steps: Total number of iterations necessary to reach the last iteration beginning from the first
-            iteration, i.e. `total_number_of_iterations - 1`
-        half_cycle: Number of iterations after which the rate reaches its extremum at mid-cycle beginning from
-            the first iteration
-        cycle_extremum: Extremum reached at mid-cycle
-        end_extremum: Optional. Extremum reached at the training end
+    only if a one-cycle scheduler is not required.
     """
-    initial_rate: float
-    total_steps: int
-    half_cycle: int
-    cycle_extremum: float
-    end_extremum: Optional[float] = None
+    initial_rate: float = field(metadata={
+        "help":  "An initial rate (learning rate or beta_1 momentum factor)."
+    })
+    total_steps: int = field(metadata={
+        "help": "Total number of iterations necessary to reach the last iteration "
+                "beginning from the first iteration, i.e. `total_number_of_iterations - 1`."
+    })
+    half_cycle: int = field(metadata={
+        "help": "Number of iterations after which the rate reaches its extremum "
+                "at mid-cycle beginning from the first iteration."
+    })
+    cycle_extremum: float = field(metadata={"help": "Extremum reached at mid-cycle."})
+    end_extremum: Optional[float] = field(
+        default=None,
+        metadata={"help": "Extremum reached at the training end."}
+    )
 
     def __post_init__(self) -> None:
         """Check arguments and their compatibility"""
@@ -213,11 +251,16 @@ class AdamwArgs(DeeplArgs):
     """A dataclass for AdamW optimizer arguments
     For details on the fields, see `https://www.tensorflow.org/addons/api_docs/python/tfa/optimizers/AdamW`
     """
-    weight_decay: Union[float, Callable] = 5e-5
-    learning_rate: Union[float, Callable] = 1e-5
-    beta_1: Union[float, Callable] = 0.9
-    beta_2: Union[float, Callable] = 0.999
-    amsgrad: Union[bool, int] = True
+    weight_decay: Union[float, Callable] = field(
+        default=5e-5, metadata={"help": "The weight decay parameter."})
+    learning_rate: Union[float, Callable] = field(
+        default=1e-5, metadata={"help": "The initial learning rate."})
+    beta_1: Union[float, Callable] = field(
+        default=0.9, metadata={"help": "The beta_1 parameter."})
+    beta_2: Union[float, Callable] = field(
+        default=0.999, metadata={"help": "The beta_2 parameter."})
+    amsgrad: Union[bool, int] = field(
+        default=True, metadata={"help": "Specifies whether to use `amsgrad`."})
 
     def __post_init__(self) -> None:
         """Check arguments and convert the `amsgrad` argument to Boolean
@@ -233,24 +276,36 @@ class AdamwArgs(DeeplArgs):
 
 @dataclass
 class SaveAndLogArgs(DeeplArgs):
-    """A dataclass for checkpoint and log arguments
-
-    Fields:
-        checkpoint_path: Model checkpoint path
-        log_tool: Optional. Tensorboard logging path, a `logging.Logger` instance or `"wandb"`
-            (if logs are to be passed to WandB)
-        save_freq: `"epoch"` or integer. If `"epoch"`, checkpoints will be created after each epoch. If integer,
-            the model will be saved after each `save_freq` iterations. Defaults to `"epoch"`
-        log_update_freq: `"epoch"` or integer, specifies how often to log. If integer, logs will be updated after
-            each `log_update_freq` iterations. Defaults to `"epoch"`
-        save_optimizer: Set to `True` if the optimizer state should be saved at each checkpoint.
-            Defaults to `True`
-    """
-    checkpoint_path: str
-    log_tool: Optional[Union[str, Logger]] = None
-    save_freq: Union[Literal["epoch"], int] = "epoch"
-    log_update_freq: Union[Literal["epoch"], int] = "epoch"
-    save_optimizer: Union[bool, int] = True
+    """A dataclass for checkpoint and log arguments."""
+    checkpoint_path: str = field(metadata={"help": "Model checkpoint path."})
+    log_tool: Optional[Union[str, Logger]] = field(
+        default=None,
+        metadata={
+            "help": "a `logging.Logger` instance or `'wandb'` "
+                    "(if logs are to be passed to WandB)"
+        }
+    )
+    save_freq: Union[Literal["epoch"], int] = field(
+        default="epoch",
+        metadata={
+            "help": "`'epoch'` or integer. If `'epoch'`, checkpoints will be "
+                    "created after each epoch. If it is integer, the model "
+                    "will be saved after each `save_freq` iterations."
+        }
+    )
+    log_update_freq: Union[Literal["epoch"], int] = field(
+        default="epoch",
+        metadata={
+            "help": "`'epoch'` or integer, specifies how often to log. If it is an integer, "
+                    "logs will be updated after each `log_update_freq` iterations."
+        }
+    )
+    save_optimizer: Union[bool, int] = field(
+        default=True,
+        metadata={
+            "help": "Set to `True` if the optimizer state should be saved at each checkpoint."
+        }
+    )
 
     def __post_init__(self) -> None:
         """Check arguments. If `save_optimizer` is an integer,
@@ -270,14 +325,13 @@ class SaveAndLogArgs(DeeplArgs):
 
 @dataclass
 class TransformerConfigs(DeeplArgs):
-    """A dataclass for Transformer configuration objects
-
-    Fields:
-        bert_config: A BERT configuration object
-        gpt_config: Optional. A GPT configuration object
-    """
-    bert_config: BertConfig
-    gpt_config: Optional[OpenAIGPTConfig] = None
+    """A dataclass for Transformer configuration objects."""
+    bert_config: BertConfig = field(
+        metadata={"help": "A BERT configuration object."})
+    gpt_config: Optional[OpenAIGPTConfig] = field(
+        default=None,
+        metadata={"help": "A GPT configuration object."}
+    )
 
     def __post_init__(self) -> None:
         """Check arguments"""
@@ -293,18 +347,16 @@ class TransformerConfigs(DeeplArgs):
 
 @dataclass
 class RnnLayerArgs(DeeplArgs):
-    """A dataclass for basic RNN arguments
-    This can be useful when arguments need to be passed to a Transformer + RNN decoder
-    Fields:
-        num_rnn_layers: Number of layers in a deep RNN. Defaults to 2
-        hidden_size: RNN hidden size. Defaults to 768
-        layernorm_eps: Epsilon parameter for layer normalization. Defaults to 1e-12
-        dropout_rate: A dropout rate between 0 and 1. Defaults to 0.1
+    """A dataclass for basic RNN arguments.
+    This can be useful when arguments need to be passed to a Transformer + RNN decoder.
     """
-    num_rnn_layers: int
-    hidden_size: int = 768
-    layernorm_eps: float = 1e-12
-    dropout_rate: float = 0.1
+    num_rnn_layers: int = field(metadata={"help": "Number of layers in a deep RNN."})
+    hidden_size: int = field(
+        default=768, metadata={"help": "RNN hidden size."})
+    layernorm_eps: float = field(
+        default=1e-12, metadata={"help": "Epsilon parameter for layer normalization."})
+    dropout_rate: float = field(
+        default=0.1, metadata={"help": "A dropout rate between 0 and 1."})
 
     def __post_init__(self) -> None:
         """Check argument values"""
@@ -317,19 +369,11 @@ class RnnLayerArgs(DeeplArgs):
 
 @dataclass
 class RnnArgs(RnnLayerArgs):
-    """A dataclass for RNN decoder arguments
-
-    Fields:
-        num_rnn_layers: Number of layers in a deep RNN. Defaults to 2
-        hidden_size: RNN hidden size. Defaults to 768
-        layernorm_eps: Epsilon parameter for layer normalization. Defaults to 1e-12
-        dropout_rate: A dropout rate between 0 and 1. Defaults to 0.1
-        vocab_size: Number of elements in the vocabulary. Defaults to 32001
-        initializer_dev: Stddev in the `TruncatedNormal` initializer for the embedding layer.
-            Defaults to 0.02
-    """
-    vocab_size: int = 32001
-    initializer_dev: float = 0.02
+    """A dataclass for RNN decoder arguments."""
+    vocab_size: int = field(
+        default=32000, metadata={"help": "Number of elements in the vocabulary. "})
+    initializer_dev: float = field(
+        default=0.02, metadata={"help": "Stddev in the `TruncatedNormal` layer initializer."})
 
     def __post_init__(self) -> None:
         """Check arguments"""
@@ -340,20 +384,16 @@ class RnnArgs(RnnLayerArgs):
 
 @dataclass
 class RegularizedEmbeddingArgs(DeeplArgs):
-    """Arguments for creating embedding layers regularized with layer normalization and dropout
-
-    Fields:
-        vocab_size: Number of elements in the vocabulary
-        hidden_size: Embedding size. Defaults to 768
-        initializer_range: Stddev for weight kernel initialization. Defaults to 0.02
-        layer_norm_eps: Epsilon parameter for layer normalization. Defaults to 1e-12
-        hidden_dropout_prob: Dropout probability. Defaults to 0.1
+    """Arguments for creating embedding layers regularized
+    with layer normalization and dropout.
     """
-    vocab_size: int
-    hidden_size: int = 768
-    initializer_range: float = 0.02
-    layer_norm_eps: float = 1e-12
-    hidden_dropout_prob: float = 0.1
+    vocab_size: int = field(metadata={"help": "Number of elements in the vocabulary."})
+    hidden_size: int = field(default=768, metadata={"help": "Embedding size."})
+    initializer_range: float = field(
+        default=0.02, metadata={"help": "Stddev for weight kernel initialization."})
+    layer_norm_eps: float = field(
+        default=1e-12, metadata={"help": "Epsilon parameter for layer normalization."})
+    hidden_dropout_prob: float = field(default=0.1, metadata={"help": "Dropout probability."})
 
     def __post_init__(self) -> None:
         """Check arguments"""
@@ -367,19 +407,12 @@ class RegularizedEmbeddingArgs(DeeplArgs):
 @dataclass
 class PositionalEmbeddingArgs(RegularizedEmbeddingArgs):
     """Arguments for a positional embedding layer.
-    This inherits from `RegularizedEmbeddingArgs`
-
-    Fields:
-        vocab_size: Number of elements in the vocabulary
-        max_position_embeddings: The maximal sequence length that the model can handle. Defaults to 512
-        hidden_size: Embedding size. Defaults to 768
-        min_freq: Minimal frequency for the sinusoidal positional encoding. Defaults to 1e-4
-        initializer_range: Stddev for weight kernel initialization. Defaults to 0.02
-        layer_norm_eps: Epsilon parameter for layer normalization. Defaults to 1e-12
-        hidden_dropout_prob: Dropout probability. Defaults to 0.1
+    This inherits from `RegularizedEmbeddingArgs`.
     """
-    max_position_embeddings: int = 512
-    min_freq: float = 1e-4
+    max_position_embeddings: int = field(
+        default=512, metadata={"help": "The maximal sequence length that the model can handle."})
+    min_freq: float = field(
+        default=1e-4, metadata={"help": "Minimal frequency for the sinusoidal positional encoding."})
 
     def __post_init__(self) -> None:
         """Check arguments"""
@@ -390,42 +423,33 @@ class PositionalEmbeddingArgs(RegularizedEmbeddingArgs):
 
 @dataclass
 class KlArgs(DeeplArgs):
-    """A dataclass for handling the KL loss term.
-
-    Fields:
-        kl_factor: A constant by which the KL loss will be multiplied. Defaults to `1.0`.
-        min_kl: Element-wise minimum of the KL loss vector, often denoted as lambda. Defaults to `0.0`.
-        target_kl_factor: Optional. A target KL multiplier if `kl_factor` is to be annealed.
-        kl_steps: Optional. The number of steps to make until `target_kl_factor` is reached if
-            `kl_factor` is annealed.
-    """
-    kl_factor: float = 1.0
-    min_kl: float = 0.0
-    target_kl_factor: Optional[float] = None
-    kl_steps: Optional[int] = None
+    """A dataclass for handling the KL loss term."""
+    warmup_iters: int = field(metadata={"help": "The number of warmup steps."})
+    start: int = field(
+        default=0,
+        metadata={"help": "The iteration when the warmup starts."}
+    )
+    min_kl: float = field(
+        default=0.,
+        metadata={
+            "help": "Minimal KL loss value per dimension. It takes effect only when `beta == 1`."
+        }
+    )
 
     def __post_init__(self) -> None:
         """Check arguments."""
-        self.kl_factor = check_if_nonnegative_float(self.kl_factor)
-        self.min_kl = check_if_nonnegative_float(self.min_kl)
-        if self.target_kl_factor is not None:
-            self.target_kl_factor = check_if_nonnegative_float(self.target_kl_factor)
-        if self.kl_steps is not None:
-            self.kl_steps = check_if_positive_int(self.kl_steps)
+        self.warmup_iters = check_if_non_negative_int(self.warmup_iters)
+        self.start = check_if_non_negative_int(self.start)
+        self.min_kl = check_if_non_negative_float(self.min_kl)
 
 
 @dataclass
 class DataSplitPathArgs(DeeplArgs):
-    """A dataclass for train, dev and test dataset paths
-
-    Fields:
-        train_path: Path to the training data file
-        dev_path: Path to the validation data file
-        test_path: Optional. Path to the test data file
-    """
-    train_path: str
-    dev_path: str
-    test_path: Optional[str] = None
+    """A dataclass for train, dev and test dataset paths."""
+    train_path: str = field(metadata={"help": "Path to the training data file."})
+    dev_path: str = field(metadata={"help": "Path to the validation data file."})
+    test_path: Optional[str] = field(
+        default=None, metadata={"help": "Path to the test data file."})
 
     def __post_init__(self) -> None:
         """Check arguments"""
@@ -436,16 +460,24 @@ class DataSplitPathArgs(DeeplArgs):
 
 
 def check_if_positive_int(maybe_positive: Union[str, int, float]) -> int:
-    """Check if an integer is positive"""
+    """Check if an integer is positive."""
     if not isinstance(maybe_positive, int):
         maybe_positive = int(maybe_positive)
     if maybe_positive <= 0:
-        raise ArgumentTypeError(f"A positive integer is expected, got {maybe_positive}")
+        raise ArgumentTypeError(f"A positive integer is expected, got {maybe_positive}.")
     return maybe_positive
 
 
+def check_if_non_negative_int(maybe_non_negative: Union[str, int, float]) -> int:
+    """Check if an integer is non-negative."""
+    maybe_non_negative = int(maybe_non_negative)
+    if maybe_non_negative < 0:
+        raise ArgumentTypeError(f"A non-negative integer is expected, got {maybe_non_negative}.")
+    return maybe_non_negative
+
+
 def check_if_output_path(maybe_output_path: str) -> str:
-    """Check if the input can be an output path"""
+    """Check if the input can be an output path."""
     if not Path(maybe_output_path).parent.is_dir():
         raise ArgumentTypeError(f"{maybe_output_path} is not a valid path "
                                 "as the parent directory does not exist.")
@@ -453,28 +485,28 @@ def check_if_output_path(maybe_output_path: str) -> str:
 
 
 def check_if_dir(maybe_dir: str) -> str:
-    """Check if the input is a path to a directory"""
+    """Check if the input is a path to a directory."""
     if not Path(maybe_dir).is_dir():
         raise ArgumentTypeError(f"{maybe_dir} is not a path to a directory.")
     return maybe_dir
 
 
 def check_if_file(maybe_file: str) -> str:
-    """Check if the input is a path to a file"""
+    """Check if the input is a path to a file."""
     if not Path(maybe_file).is_file():
         raise ArgumentTypeError(f"{maybe_file} is not a path to a file.")
     return maybe_file
 
 
 def check_if_nonempty_string(maybe_nonempty: str) -> str:
-    """Check if the input is not the empty string"""
+    """Check if the input is not the empty string."""
     if maybe_nonempty == "":
         raise ArgumentTypeError(f"The empty string is not a valid argument.")
     return maybe_nonempty
 
 
 def check_if_positive_float(maybe_positive: Union[str, int, float]) -> float:
-    """Check if the input `float` is positive"""
+    """Check if the input `float` is positive."""
     maybe_positive = float(maybe_positive)
     if maybe_positive <= 0:
         raise ArgumentTypeError(
@@ -482,13 +514,13 @@ def check_if_positive_float(maybe_positive: Union[str, int, float]) -> float:
     return maybe_positive
 
 
-def check_if_nonnegative_float(maybe_nonnegative: Union[str, int, float]) -> float:
+def check_if_non_negative_float(maybe_non_negative: Union[str, int, float]) -> float:
     """Check if the input `float` is non-negative."""
-    maybe_nonnegative = float(maybe_nonnegative)
-    if maybe_nonnegative < 0:
+    maybe_non_negative = float(maybe_non_negative)
+    if maybe_non_negative < 0:
         raise ArgumentTypeError(
-            f"A non-negative float is expected, got {maybe_nonnegative}")
-    return maybe_nonnegative
+            f"A non-negative float is expected, got {maybe_non_negative}")
+    return maybe_non_negative
 
 
 def check_if_float_in_interval(

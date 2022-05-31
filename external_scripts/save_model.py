@@ -12,7 +12,7 @@ from ae_sentence_embeddings.ae_training.model_type_config import model_type_map
 from ae_sentence_embeddings.argument_handling import (
     check_if_output_path,
     check_if_file,
-    check_if_nonnegative_float
+    check_if_non_negative_float
 )
 from ae_sentence_embeddings.ae_training.pretrain import (
     group_model_args_from_flat,
@@ -33,9 +33,9 @@ def get_model_save_args() -> Namespace:
                                                  "that was used for pre-training.")
     parser.add_argument("--save-path", dest="save_path", type=check_if_output_path,
                         help="Path to a directory where the Keras serialized model can be saved.")
-    parser.add_argument("--new-kl-factor", dest="new_kl_factor", type=check_if_nonnegative_float,
+    parser.add_argument("--new-kl-factor", dest="new_kl_factor", type=check_if_non_negative_float,
                         help="Optional. Set a new KL loss factor for a VAE.")
-    parser.add_argument("--new-min-kl", dest="new_min_kl", type=check_if_nonnegative_float,
+    parser.add_argument("--new-min-kl", dest="new_min_kl", type=check_if_non_negative_float,
                         help="Optional. Set a minimal KL value for a VAE.")
     parser.add_argument("--save-full-model", dest="save_full_model", action="store_true",
                         help="Specify this flag to save the full model, not only the encoder part.")

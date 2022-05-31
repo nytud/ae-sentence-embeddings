@@ -1,23 +1,23 @@
+# -*- coding: utf-8 -*-
+
 """A module for pre-training"""
 
-from dataclasses import dataclass
 from copy import deepcopy
+from dataclasses import dataclass
+from inspect import signature
 from os import environ
 from typing import Mapping, Any, Optional, Sequence, Union, Literal, Dict, List
-from inspect import signature
-from warnings import warn
 
 import tensorflow as tf
+import wandb
 from tensorflow.python.keras.callbacks import History
 from tensorflow_addons.optimizers import AdamW
 from transformers import BertConfig, OpenAIGPTConfig
-import wandb
 from wandb.keras import WandbCallback
 
 from ae_sentence_embeddings.ae_training.model_type_config import (
     model_type_map,
-    rnn_only_decoder_models,
-    vae_models
+    rnn_only_decoder_models
 )
 from ae_sentence_embeddings.argument_handling import (
     DataStreamArgs,
@@ -25,7 +25,6 @@ from ae_sentence_embeddings.argument_handling import (
     SaveAndLogArgs,
     DataSplitPathArgs,
     OneCycleArgs,
-    RnnLayerArgs,
     RnnArgs,
     KlArgs,
     camel_to_snake
@@ -34,8 +33,7 @@ from ae_sentence_embeddings.callbacks import (
     AeCustomCheckpoint,
     OneCycleScheduler,
     CyclicScheduler,
-    DevEvaluator,
-    KLAnnealer
+    DevEvaluator
 )
 from ae_sentence_embeddings.data import get_train_and_validation
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy, IgnorantSparseCatAccuracy
@@ -194,18 +192,25 @@ def flatten_nested_dict(nested_data: Dict[str, Any]) -> Dict[str, Any]:
 def get_model_kwargs(
         model_type: type,
         pooling_type: PoolingTypes,
-        kl_factor: float,
+        iters: int,
+        warmup_iters: int,
+        kl_anneal_start: int,
         min_kl: float,
-) -> Dict[str, Union[PoolingTypes, float, int, RnnLayerArgs, None]]:
-    """Helper function to collect keyword arguments for model initialization"""
-    pooling_type_name = "pooling_type"
-    kl_factor_name, min_kl_name = "kl_factor", "min_kl"
+) -> Dict[str, Union[PoolingTypes, Dict[str, Union[float, int]]]]:
+    """Helper function to collect keyword arguments for model initialization."""
+    pooling_type_name, iters_name = "pooling_type", "iters"
+    warmup_iters_name, kl_anneal_start_name = "warmup_iters", "start"
+    min_kl_name, kl_reg_args_name = "reg_args", "min_kl"
     model_init_kwargs = {pooling_type_name: pooling_type}
     expected_args = signature(model_type.__init__).parameters.keys()
-    if kl_factor_name in expected_args:
-        model_init_kwargs[kl_factor_name] = kl_factor
-    if min_kl_name in expected_args:
-        model_init_kwargs[min_kl_name] = min_kl
+    if kl_reg_args_name in expected_args:
+        reg_args = {
+            arg_name: arg for arg_name, arg in zip(
+                (iters_name, warmup_iters_name, kl_anneal_start_name, min_kl_name),
+                (iters, warmup_iters, kl_anneal_start, min_kl)
+            )
+        }
+        model_init_kwargs[kl_reg_args_name] = reg_args
     return model_init_kwargs
 
 
@@ -216,9 +221,6 @@ def log_and_schedule_setup(
         lr_args: Optional[OneCycleArgs] = None,
         momentum_args: Optional[OneCycleArgs] = None,
         keep_lr_cycling: bool = False,
-        initial_kl: Optional[float] = None,
-        target_kl: Optional[float] = None,
-        kl_steps: Optional[int] = None
 ) -> List[tf.keras.callbacks.Callback]:
     """Logging and learning rate scheduling setup.
 
@@ -229,14 +231,9 @@ def log_and_schedule_setup(
             or after `validation_freq` iterations (if integer).
         lr_args: Optional. Learning rate scheduler arguments as a dataclass.
         momentum_args: Optional. Momentum scheduler arguments as a dataclass.
-        keep_lr_cycling: Keep the learning rate cycling. The `initial_rate`, `total_steps` and `cycle_extremum`
-            fields of `lr_args` are required to apply this option. Defaults to `False`.
-        initial_kl: Optional. An initial KL loss multiplier. This has effect only if `kl_steps` and `target_kl`
-            are specified as well.
-        target_kl: Optional. A target KL loss multiplier. This has effect only if `initial_kl` and `kl_steps`
-            are specified as well.
-        kl_steps: Optional. The number of iterations in which the `target_kl` should be reached.
-            This has effect only if `initial_kl` and `target_kl` are specified as well.
+        keep_lr_cycling: Keep the learning rate cycling. The `initial_rate`, `total_steps`
+            and `cycle_extremum` fields of `lr_args` are required to apply this option.
+            Defaults to `False`.
 
     Returns:
         A list of callbacks:
@@ -246,7 +243,6 @@ def log_and_schedule_setup(
             Validation: Only included if validation is expected to be done more frequently
                 than after each epoch. Otherwise, the Keras `fit` method can handle the validation.
             WandB: Only included if the logging tool is `WandB`.
-            KLAnnealer: Only if `initial_kl`, `target_kl` and `kl_steps` are specified.
     """
     assert not (keep_lr_cycling and lr_args is None), "Cycling learning rate was requested but " \
                                                       "no arguments were provided."
@@ -303,13 +299,6 @@ def log_and_schedule_setup(
                 "Please use `WandB` as a logging tool or a custom `Logging.logger` instance "
                 "(the latter may only log messages from custom callbacks). Other logging "
                 "tools such as Tensorboard are currently not supported.")
-        if all([initial_kl, target_kl, kl_steps]):
-            callbacks.append(KLAnnealer(
-                initial_rate=initial_kl,
-                target_rate=target_kl,
-                total_steps=kl_steps,
-                log_freq=save_and_log_args.log_update_freq
-            ))
     return callbacks
 
 
@@ -418,9 +407,11 @@ def pretrain_transformer_ae(
     # Configure the model
     model_type = model_type_map[model_type_name]
     model_init_kwargs = get_model_kwargs(
+        iters=0,
         model_type=model_type,
         pooling_type=pooling_type,
-        kl_factor=kl_args.kl_factor,
+        warmup_iters=kl_args.warmup_iters,
+        kl_anneal_start=kl_args.start,
         min_kl=kl_args.min_kl,
     )
 
@@ -442,21 +433,14 @@ def pretrain_transformer_ae(
         lr_args=lr_args,
         keep_lr_cycling=keep_lr_cycling,
         momentum_args=momentum_args,
-        initial_kl=kl_args.kl_factor,
-        target_kl=kl_args.target_kl_factor,
-        kl_steps=kl_args.kl_steps
     )
-    if isinstance(callbacks[-1], KLAnnealer):
-        assert model_type_name in vae_models, f"You can apply `KLAnnealer` only to VAE models!"
-        run_eagerly = True
-        warn("KL factor annealing was turned on. To enable this behavior, the model will run eagerly.")
-    else:
-        run_eagerly = False
 
     # Configure the training
     strategy = devices_setup(devices)
     with strategy.scope():
         optimizer = AdamW(**adamw_args.to_dict())
+        if "reg_args" in model_init_kwargs.keys():
+            model_init_kwargs["reg_args"]["iters"] = optimizer.iterations
         model = model_type(
             enc_config=encoder_config, dec_config=decoder_config, **model_init_kwargs)
         if model_ckpt is not None:
@@ -464,7 +448,7 @@ def pretrain_transformer_ae(
                        tf.keras.Input(shape=(None,), dtype=tf.int32)))
             model.load_weights(model_ckpt)
         model.compile(optimizer=optimizer, loss=IgnorantSparseCatCrossentropy(from_logits=True),
-                      metrics=[IgnorantSparseCatAccuracy()], run_eagerly=run_eagerly)
+                      metrics=[IgnorantSparseCatAccuracy()])
     del model_init_kwargs, encoder_config, decoder_config
     history = model.fit(
         x=train_dataset,
