@@ -101,8 +101,10 @@ The following model architectures are currently available:
 * `TransformerAe`: A BERT encoder and a GPT decoder. The pooled BERT encoder output is used as first token embedding input (similar to CLS) to the decoder
 * `TransformerVae`: Similar to `TransformerVae` but with variational auto-encoding.
 * `BertRnnVae`: A BERT encoder and an RNN (GRU) decoder. The pooled BERT output is passed to the decoder as its initial hidden state. This architecture relies on variational auto-encoding.
-* `BertBiRnnVae`: Similar to `BertRnnVae`, but it designed to be trained on bilingual data. There are two RNN decoders each of which specializes on one language. The encoder should be able to handle both languages.
 
+## Download
+
+You can download the pre-trained model weigths [here](https://nc.nlp.nytud.hu/s/TpSQ4zKLypD65XE).
 
 ## Notes
 
