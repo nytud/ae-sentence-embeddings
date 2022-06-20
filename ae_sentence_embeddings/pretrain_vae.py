@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """Pre-train a variational autoencoder with an Adam optimizer
@@ -34,7 +35,7 @@ from ae_sentence_embeddings.argument_handling import (
     RnnArgs
 )
 from ae_sentence_embeddings.modeling_tools import get_custom_logger, read_json, timing
-from ae_sentence_embeddings.callbacks import AeCustomCheckpoint, DevEvaluator
+from ae_sentence_embeddings.callbacks import AeCustomCheckpoint, DevEvaluator, VaeLogger
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy
 from ae_sentence_embeddings.models import BertRnnVae
 
@@ -152,10 +153,16 @@ def main() -> None:
     }
     train_dataset, num_batches = process_data(dataset=args.pop("train_dataset"), **data_kwargs)
     devel_dataset, _ = process_data(dataset=args.pop("devel_dataset"), **data_kwargs)
+    logger.debug(f"An example from the training dataset:\n{next(iter(train_dataset))}")
     train_dataset = train_dataset.prefetch(1)
 
     callbacks = [
         AeCustomCheckpoint(args["checkpoint_dir"], save_freq=args["save_freq"]),
+        VaeLogger(
+            log_update_freq=args["log_update_freq"],
+            beta_warmup_iters=args["beta_warmup_iters"],
+            beta_warmup_start=args["beta_warmup_start"],
+        ),
         DevEvaluator(devel_dataset, logger="WandB", log_freq=args["validation_freq"]),
         WandbCallback(save_model=False, log_batch_frequency=args["log_update_freq"])
     ]

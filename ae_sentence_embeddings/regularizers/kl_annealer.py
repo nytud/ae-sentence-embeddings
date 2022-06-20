@@ -12,6 +12,25 @@ from tensorflow.keras.utils import register_keras_serializable
 from tensorflow.python.keras.regularizers import Regularizer
 
 
+def calculate_beta(
+        iters: Union[int, tf.Variable],
+        warmup_iters: int,
+        start: int
+) -> tf.Tensor:
+    """Calculate the actual KL loss beta.
+
+    Args:
+        iters: The actual iteration.
+        warmup_iters: The number of warmup steps.
+        start: The iteration when the warmup starts.
+
+    Returns:
+        The actual beta value.
+    """
+    iteration = tf.cond(iters > start, lambda: iters - start, lambda: 0.)
+    return tf.minimum(iteration / warmup_iters, 1.)
+
+
 @register_keras_serializable(package="ae_sentence_embeddings")
 class KLDivergenceRegularizer(Regularizer):
     """A KL regularizer with beta annealing. Based on
@@ -44,13 +63,11 @@ class KLDivergenceRegularizer(Regularizer):
     def __call__(self, activation: Tuple[tf.Tensor, tf.Tensor, ...]) -> tf.Tensor:
         """Calculate the actual KL loss."""
         mu, log_var, *_ = activation
-        iteration = tf.cond(self._iters > self._start,
-                            lambda: self._iters - self._start, lambda: 0.)
-        beta = tf.minimum(iteration / self._warmup_iters, 1.)
+        beta = calculate_beta(iters=self._iters, start=self._start, warmup_iters=self._warmup_iters)
         min_kl = tf.cond(beta == 1., lambda: self._min_kl, lambda: 0.)
         # noinspection PyTypeChecker
-        kl_loss = -0.5 * beta * tf.reduce_sum(1 + log_var - tf.square(mu) - tf.exp(log_var))
-        return tf.maximum(min_kl, kl_loss)
+        kl_loss = -0.5 * beta * (1 + log_var - tf.square(mu) - tf.exp(log_var))
+        return tf.reduce_sum(tf.maximum(min_kl, kl_loss))
 
     def get_config(self) -> Dict[str, int]:
         """Serialize the regularizer.

@@ -45,7 +45,6 @@ class AeCustomCheckpoint(Callback):
         self._checkpoint_root = os_path_join(checkpoint_root, strftime("run_%Y_%m_%d-%H_%M_%S"))
         self.save_freq = save_freq
         self.save_optimizer = save_optimizer
-        self._batch_id = 0
         self.no_serialization = no_serialization
 
     def _make_checkpoint(self, subdir_name: Union[int, str]) -> None:
@@ -65,22 +64,21 @@ class AeCustomCheckpoint(Callback):
             self.model.save_weights(weight_dir)
             warn("The model does not implement a `checkpoint` method. The optimizer state was not saved.")
 
-    def on_epoch_end(self, epoch: int, logs=None) -> None:
+    def on_epoch_end(self, epoch: int, logs: Dict[str, Any] = None) -> None:
         """Save model if `save_freq == "epoch"`"""
         if self.save_freq == "epoch":
             self._make_checkpoint(f"epoch_{epoch+1}")
 
-    def on_batch_end(self, batch: int, logs=None) -> None:
+    def on_train_batch_end(self, batch: int, logs: Dict[str, Any] = None) -> None:
         """Create checkpoint or pass according to `save_freq`.
         Update the global batch ID (number of batch independently of the epoch)
         """
-        self._batch_id += 1
-        if isinstance(self.save_freq, int) and self._batch_id % self.save_freq == 0:
-            self._make_checkpoint(f"step_{self._batch_id}")
+        if isinstance(self.save_freq, int) and self.model.optimizer.iterations % self.save_freq == 0:
+            self._make_checkpoint(f"step_{self.model.optimizer.iterations}")
 
-    def on_train_end(self, logs=None) -> None:
+    def on_train_end(self, logs: Dict[str, Any] = None) -> None:
         """Save model on training end if not saved yet"""
-        if isinstance(self.save_freq, int) and self._batch_id % self.save_freq != 0:
+        if isinstance(self.save_freq, int) and self.model.optimizer.iterations % self.save_freq != 0:
             self._make_checkpoint("train_end")
 
 
@@ -124,25 +122,23 @@ class DevEvaluator(Callback):
         self._logger = None
         self._logging_method = None
         self.set_logger(logger)
-        self.iteration = 0
 
     def _simple_log(self, dev_logs: Dict[str, Any]) -> None:
         """Log results to a simple logger"""
-        self._logger.debug(f"Evaluation results at iteration {self.iteration}:\n{dev_logs}")
+        self._logger.debug(f"Evaluation results at iteration {self.model.optimizer.iterations}:\n{dev_logs}")
 
     @staticmethod
     def _wandb_log(dev_logs: Dict[str, Any]) -> None:
         """Log results to WandB. This will not be committed automatically!"""
         wandb.log({"dev_" + key: value for key, value in dev_logs.items()}, commit=False)
 
-    def on_train_batch_end(self, batch: int, logs=None) -> None:
-        if (self.iteration + 1) % self.log_freq == 0:
+    def on_train_batch_end(self, batch: int, logs: Dict[str, Any] = None) -> None:
+        if self.model.optimizer.iterations % self.log_freq == 0:
             results = self.model.evaluate(self.dev_data, return_dict=True)
             self._logging_method(results)
-        self.iteration += 1
 
-    def on_epoch_end(self, epoch: int, logs=None) -> None:
-        if self.iteration % self.log_freq != 0:
+    def on_epoch_end(self, epoch: int, logs: Dict[str, Any] = None) -> None:
+        if self.model.optimizer.iterations % self.log_freq != 0:
             results = self.model.evaluate(self.dev_data, return_dict=True)
             self._logging_method(results)
 
