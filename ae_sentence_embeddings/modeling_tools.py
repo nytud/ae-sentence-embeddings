@@ -1,11 +1,15 @@
 """A module for functions that adapt inputs to layers
 and other utils: logging, I/O handling, n-gram iteration"""
 
-from typing import Dict, Tuple, Union, Any, Optional, Literal, Iterable, Iterator
-from argparse import ArgumentParser
-from itertools import tee, islice
 import json
 import logging
+from os.path import isfile
+from contextlib import contextmanager
+from time import time
+from datetime import timedelta
+from typing import Dict, Tuple, Union, Any, Optional, Literal, Iterable, Iterator
+from argparse import ArgumentParser, ArgumentTypeError
+from itertools import tee, islice
 
 import tensorflow as tf
 from tensorflow.python.framework.dtypes import DType
@@ -53,8 +57,10 @@ def make_decoder_inputs(input_tensor: tf.Tensor, pad_value: int = 0) -> tf.Tenso
 
 
 def read_json(file_path: str) -> Dict[str, Any]:
-    """Read in a `json` configuration file"""
-    with open(file_path, 'rb') as f:
+    """Read in a `json` configuration file."""
+    if not isfile(file_path):
+        raise ArgumentTypeError(f"{file_path} is not a path to a file.")
+    with open(file_path, "rb") as f:
         json_dict = json.load(f)
     return json_dict
 
@@ -67,41 +73,43 @@ def get_training_args() -> ArgumentParser:
 
 
 def get_custom_logger(
-        log_path: str,
-        logger_name: Optional[str] = None,
+        log_path: Optional[str] = None,
         level: Optional[int] = None,
         log_format: Optional[str] = None,
-        f_mode: Literal['a', 'w'] = 'a',
+        logger_name: str = "UserLogger",
+        f_mode: Literal["a", "w"] = "a",
         encoding: str = "utf-8"
 ) -> logging.Logger:
     """Get a custom logger instance
 
     Args:
-        log_path: Path to a file where logs can be written
-        logger_name: Optional. Logger name. If not specified, it will be set to `UserLogger`
-        level: Optional. A valid logging level. If not specified, it will be set to `DEBUG`
+        log_path: Path to a file where logs can be written. If not specified, the logger
+            will print to `stderr`.
+        level: Optional. A valid logging level. If not specified, it will be set to `DEBUG`.
         log_format: Optional. A format for logging messages. If not specified, it will be set to
-                    `"%(asctime)s - %(name)s - %(levelname)s - %(message)s"`
-        f_mode: Opening mode for the log file. Defaults to `'a'` (append)
-        encoding: Log file encoding. Defaults to `"utf-8"`
+                    `'%(asctime)s - %(name)s - %(levelname)s - %(message)s'`.
+        logger_name: The logger name. Defaults to `'UserLogger'`.
+        f_mode: Opening mode for the log file. Relevant only if `log_path` is specified.
+            Defaults to `'a'` (append).
+        encoding: Log file encoding. Relevant only if `log_path` is specified. Defaults to `"utf-8"`.
 
     Returns:
         A file logger
     """
-    if logger_name is None:
-        logger_name = "UserLogger"
     logger = logging.getLogger(logger_name)
     if level is None:
         level = logging.DEBUG
     logger.setLevel(level)
-    file_handler = logging.FileHandler(
-        filename=log_path, mode=f_mode, encoding=encoding)
-    file_handler.setLevel(level)
+    if log_path is not None:
+        handler = logging.FileHandler(filename=log_path, mode=f_mode, encoding=encoding)
+    else:
+        handler = logging.StreamHandler()
+    handler.setLevel(level)
     if log_format is None:
         log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     formatter = logging.Formatter(log_format)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
     return logger
 
 
@@ -120,3 +128,18 @@ def make_ngram_iter(it: Iterable, ngram_length: int, step_size: int = 1) -> Iter
         An iterator of tuples where the tuples are n-grams
     """
     return zip(*(islice(tee_it, i, None, step_size) for i, tee_it in enumerate(tee(it, ngram_length))))
+
+
+@contextmanager
+def timing(description: str, time_logger: logging.Logger) -> None:
+    """Create a context manager to measure execution time.
+
+    Args:
+        description: Short description of the wrapped code.
+        time_logger: A logger that will write DEBUG messages.
+    """
+    time_logger.debug(f"Starting: {description}")
+    start = time()
+    yield
+    elapsed_time = str(timedelta(seconds=time() - start))
+    time_logger.debug(f"Done: {description}: {elapsed_time}")

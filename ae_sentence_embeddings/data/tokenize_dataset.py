@@ -11,7 +11,7 @@ from functools import partial
 import tensorflow as tf
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, AutoTokenizer, BatchEncoding
 from tokenizers import Tokenizer
-from datasets import Dataset as HgfDataset
+from datasets import Dataset as HgfDataset, load_dataset
 
 from ae_sentence_embeddings.modeling_tools import make_decoder_inputs, make_ngram_iter
 
@@ -32,6 +32,12 @@ def load_tokenizer(tokenizer_path: str) -> Union[AutoTokenizer, Tokenizer]:
     else:
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     return tokenizer
+
+
+def load_hgf_dataset(dataset_path: str) -> HgfDataset:
+    """Load a `datasets.Dataset` in `jsonlines` format from disc."""
+    # `split = "train" has to be specified, but it has no meaning.`
+    return load_dataset("json", data_files=[dataset_path], split="train")
 
 
 def tokenize_hgf_dataset(
