@@ -60,7 +60,7 @@ class KLDivergenceRegularizer(Regularizer):
         self._start = start
         self._min_kl = min_kl
 
-    def __call__(self, activation: Tuple[tf.Tensor, tf.Tensor, ...]) -> tf.Tensor:
+    def __call__(self, activation: Tuple[tf.Tensor, ...]) -> tf.Tensor:
         """Calculate the actual KL loss."""
         mu, log_var, *_ = activation
         beta = calculate_beta(iters=self._iters, start=self._start, warmup_iters=self._warmup_iters)
