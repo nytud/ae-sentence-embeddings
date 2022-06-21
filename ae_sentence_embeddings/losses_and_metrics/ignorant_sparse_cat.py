@@ -10,7 +10,7 @@ from tensorflow.keras.losses import Reduction
 from tensorflow.keras.metrics import SparseCategoricalAccuracy
 from tensorflow.keras.utils import register_keras_serializable
 
-ReductionMode = Literal["sum", "sum_over_batch_size", "average"]
+ReductionMode = Literal["sum", "sum_over_batch_size"]
 
 
 def _average_and_sum(loss_tensor: tf.Tensor) -> tf.Tensor:

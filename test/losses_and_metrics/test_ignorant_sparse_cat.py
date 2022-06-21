@@ -2,7 +2,6 @@
 
 """Test sparse categorical crossentropy loss with mask labels"""
 
-import numpy as np
 import tensorflow as tf
 
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy
@@ -11,22 +10,23 @@ from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentr
 class IgnorantSparseCatTest(tf.test.TestCase):
 
     def setUp(self) -> None:
-        """Fixture setup
+        """Fixture setup.
 
         This creates the following:
-            a random tensor of shape (2, 4, 5), which represents the logits;
-            an integer-valued tensor of shape (2, 4), which represent the class labels
+            a tensor of shape `(2, 2, 3)`, which represents the logits;
+            an integer-valued tensor of shape `(2, 2)`, which represent the class labels.
         """
         super().setUp()
-        self.logits = tf.keras.backend.random_normal(shape=(2, 4, 5))
-        self.labels = tf.constant([[0, 3, 2, -1], [1, 4, -1, -1]])
+        self._logits = tf.convert_to_tensor([[[1.5, -0.3, 0.2], [2.1, -0.7, -1.9]]]*2)
+        self._labels = tf.convert_to_tensor([[0, 1], [0, -1]])
 
     def test_ignorant_sparse_cat_crossentropy(self) -> None:
-        """Test IgnorantSparseCatCrossentropy"""
+        """Test IgnorantSparseCatCrossentropy."""
         loss_func = IgnorantSparseCatCrossentropy(from_logits=True)
+        expected_result = 1.8012111
         # noinspection PyCallingNonCallable
-        loss_val = loss_func(self.labels, self.logits)
-        self.assertShapeEqual(np.array(1.), loss_val, msg=f"Loss value is {loss_val}")
+        loss_val = loss_func(self._labels, self._logits)
+        self.assertEqual(expected_result, loss_val)
 
 
 if __name__ == "__main__":
