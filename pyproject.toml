@@ -13,11 +13,11 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.10"
-tensorflow = "^2.8.0"
+tensorflow = "^2.9.1"
 tensorflow-addons = "^0.16.1"
-wandb = "^0.12.11"
-transformers = "^4.17.0"
-datasets = "^2.0.0"
+wandb = "^0.12.18"
+transformers = "^4.20.0"
+datasets = "^2.3.2"
 
 [tool.poetry.dev-dependencies]
 poetry2setup = "^1.0.0"
