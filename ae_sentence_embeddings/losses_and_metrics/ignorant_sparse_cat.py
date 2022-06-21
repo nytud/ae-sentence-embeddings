@@ -2,10 +2,10 @@
 
 """Define loss functions that can ignore a specific label"""
 
-from typing import Dict, Any, Literal
+from typing import Dict, Any, Literal, Optional
 
 import tensorflow as tf
-from tensorflow.keras.losses import SparseCategoricalCrossentropy
+from tensorflow.keras.losses import sparse_categorical_crossentropy
 from tensorflow.keras.losses import Reduction
 from tensorflow.keras.metrics import SparseCategoricalAccuracy
 from tensorflow.keras.utils import register_keras_serializable
@@ -41,19 +41,17 @@ class IgnorantSparseCatCrossentropy(tf.keras.losses.Loss):
         """Initialize the loss object
 
         Args:
-            mask_label: The label that will be ignored. Defaults to -1
-            reduction: Reduction mode, `"sum"` or `"sum_over_batch_size"`, or `"average"`. Please set this
-                argument instead of the parent class `reduction` argument. An attempt to set `reduction` will
-                lead to and exception. Defaults to `"sum_over_batch_size"`, which indicates averaging over the
-                batch dimension
-            from_logits: Specifies whether the inputs are logits. Defaults to `False`
-            factor: A normalizing constant by which the loss value will be multiplied. Defaults to `1.0`
-            **kwargs: Additional keyword arguments for the parent class
+            mask_label: The label that will be ignored. Defaults to `-1`.
+            reduction: Reduction mode, `"sum"` or `"sum_over_batch_size"`. Please set this argument
+                instead of the parent class `reduction` argument. An attempt to set `reduction` will
+                lead to an exception. Defaults to `"sum_over_batch_size"`, which indicates averaging
+                over the batch dimension.
+            from_logits: Specifies whether the inputs are logits. Defaults to `False`.
+            factor: A normalizing constant by which the loss value will be multiplied. Defaults to `1.0`.
+            **kwargs: Additional keyword arguments for the parent class.
         """
         if reduction_mode == "sum":
             self._reduction_func = tf.reduce_sum
-        elif reduction_mode == "average":
-            self._reduction_func = tf.reduce_mean
         elif reduction_mode == "sum_over_batch_size":
             self._reduction_func = _average_and_sum
         else:
@@ -65,12 +63,11 @@ class IgnorantSparseCatCrossentropy(tf.keras.losses.Loss):
         super().__init__(**kwargs, reduction=Reduction.NONE)
         self.mask_label = mask_label
         self._from_logits = from_logits
-        self._base_loss = SparseCategoricalCrossentropy(reduction=Reduction.NONE, from_logits=from_logits)
         self.factor = factor
 
     def call(self, y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
         y_mod = tf.where(y_true == self.mask_label, 0, y_true)
-        cross_entropy = self._base_loss(y_mod, y_pred)
+        cross_entropy = sparse_categorical_crossentropy(y_mod, y_pred, from_logits=self._from_logits)
         masked_cross_entropy = tf.where(y_true == self.mask_label, 0., cross_entropy)
         return tf.multiply(self.factor, self._reduction_func(masked_cross_entropy))
 
@@ -102,7 +99,7 @@ class IgnorantSparseCatAccuracy(SparseCategoricalAccuracy):
         super().__init__(**kwargs)
         self.mask_label = mask_label
 
-    def update_state(self, y_true: tf.Tensor, y_pred: tf.Tensor, sample_weight=None) -> None:
+    def update_state(self, y_true: tf.Tensor, y_pred: tf.Tensor, sample_weight: Optional[tf.Tensor] = None) -> None:
         """Use sample weight as mask"""
         sample_weight = tf.where(y_true == self.mask_label, 0., 1.)
         super().update_state(y_true, y_pred, sample_weight=sample_weight)
