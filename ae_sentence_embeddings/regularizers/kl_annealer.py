@@ -53,7 +53,6 @@ class KLDivergenceRegularizer(Regularizer):
             min_kl: Minimal KL loss value per dimension. It takes effect only when `beta == 1`.
                 Defaults to `0.0`.
         """
-        assert start < warmup_iters, f"`start` must be smaller than `warmup_iters`."
         super(KLDivergenceRegularizer, self).__init__()
         self._iters = iters
         self._warmup_iters = warmup_iters
@@ -63,7 +62,10 @@ class KLDivergenceRegularizer(Regularizer):
     def __call__(self, activation: Tuple[tf.Tensor, ...]) -> tf.Tensor:
         """Calculate the actual KL loss."""
         mu, log_var, *_ = activation
-        beta = calculate_beta(iters=self._iters, start=self._start, warmup_iters=self._warmup_iters)
+        beta = tf.cast(
+            calculate_beta(iters=self._iters, start=self._start, warmup_iters=self._warmup_iters),
+            dtype=mu.dtype
+        )
         min_kl = tf.cond(beta == 1., lambda: self._min_kl, lambda: 0.)
         # noinspection PyTypeChecker
         kl_loss = -0.5 * beta * (1 + log_var - tf.square(mu) - tf.exp(log_var))
