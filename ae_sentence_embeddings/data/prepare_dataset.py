@@ -45,8 +45,8 @@ def convert_to_tf_dataset(dataset: HgfDataset) -> TFDataset:
 
         def data_gen() -> Generator[Tuple[Tuple[tf.Tensor, ...], tf.Tensor], None, None]:
             for example in dataset:
-                input_fields = tuple(tf.constant(example[feature]) for feature in feature_cols)
-                target_field = tf.constant(example[target_cols[0]])
+                input_fields = tuple(tf.convert_to_tensor(example[feature]) for feature in feature_cols)
+                target_field = tf.convert_to_tensor(example[target_cols[0]])
                 yield input_fields, target_field
 
     else:
@@ -55,8 +55,8 @@ def convert_to_tf_dataset(dataset: HgfDataset) -> TFDataset:
 
         def data_gen() -> Generator[MultiLingTensorStruct, None, None]:
             for example in dataset:
-                input_fields = tuple(tf.constant(example[feature]) for feature in feature_cols)
-                target_field = tuple(tf.constant(example[target]) for target in target_cols)
+                input_fields = tuple(tf.convert_to_tensor(example[feature]) for feature in feature_cols)
+                target_field = tuple(tf.convert_to_tensor(example[target]) for target in target_cols)
                 yield input_fields, target_field
 
     return TFDataset.from_generator(data_gen, output_signature=out_spec)

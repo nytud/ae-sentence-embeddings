@@ -181,8 +181,8 @@ def main() -> None:
     data_kwargs = {
         "tokenizer": args.pop("tokenizer"),
         "batch_size": args["batch_size"],
-        "first_bucket_boundary": args[""],
-        "num_buckets": args[""],
+        "first_bucket_boundary": args["first_bucket_boundary"],
+        "num_buckets": args["num_buckets"],
         "logger": logger
     }
     train_dataset = process_data(
@@ -232,7 +232,7 @@ def main() -> None:
                 "min_kl": args["min_kl"]
             }
         )
-        model.compile(loss=IgnorantSparseCatCrossentropy(), from_logits=True, optimizer=optimizer)
+        model.compile(loss=IgnorantSparseCatCrossentropy(from_logits=True), optimizer=optimizer)
         logger.debug(f"Training has begun!")
         _ = model.fit(
             x=train_dataset,
