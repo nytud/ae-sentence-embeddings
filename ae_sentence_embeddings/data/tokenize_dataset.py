@@ -35,9 +35,9 @@ def load_tokenizer(tokenizer_path: str) -> Union[AutoTokenizer, Tokenizer]:
 
 
 def load_hgf_dataset(dataset_path: str) -> HgfDataset:
-    """Load a `datasets.Dataset` in `jsonlines` format from disc."""
+    """Load a `datasets.Dataset` in raw text format from disc."""
     # `split = "train" has to be specified, but it has no meaning.`
-    return load_dataset("json", data_files=[dataset_path], split="train")
+    return load_dataset("text", data_files=[dataset_path], split="train")
 
 
 def tokenize_hgf_dataset(

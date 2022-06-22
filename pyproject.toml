@@ -14,9 +14,9 @@ classifiers = [
 [tool.poetry.dependencies]
 python = ">=3.8,<3.10"
 tensorflow = "^2.9.1"
-tensorflow-addons = "^0.16.1"
+tensorflow-addons = "^0.17.1"
 wandb = "^0.12.18"
-transformers = "^4.20.0"
+transformers = "^4.20.1"
 datasets = "^2.3.2"
 
 [tool.poetry.dev-dependencies]
