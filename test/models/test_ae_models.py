@@ -1,19 +1,20 @@
 # -*- coding: utf-8 -*-
 
-"""A module for AE model unittest"""
+"""A module for testing the full models."""
 
 import tensorflow as tf
-from transformers import BertConfig, OpenAIGPTConfig
+from transformers import BertConfig
 import numpy as np
 
-from ae_sentence_embeddings.models import TransformerVae
+from ae_sentence_embeddings.models import BertRnnVae
+from ae_sentence_embeddings.argument_handling import RnnArgs
 
 
 class TransformerVaeTest(tf.test.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        """Create a dummy model"""
+        """Create a dummy model."""
         super().setUpClass()
         enc_config = BertConfig(
             vocab_size=30,
@@ -22,25 +23,29 @@ class TransformerVaeTest(tf.test.TestCase):
             hidden_size=128,
             intermediate_size=512
         )
-        dec_config = OpenAIGPTConfig(
+        dec_config = RnnArgs(
+            num_rnn_layers=2,
             vocab_size=30,
-            n_layer=2,
-            n_head=2,
-            n_embd=128,
+            hidden_size=128
         )
-        cls.model = TransformerVae(enc_config, dec_config, pooling_type="average")
+        reg_args = {
+            "iters": 0,
+            "warmup_iters": 4
+        }
+        cls._model = BertRnnVae(enc_config, dec_config,
+                                reg_args=reg_args, pooling_type="average")
 
     def setUp(self) -> None:
-        """Fixture setup. Create input token IDs and attention mask"""
+        """Fixture setup. Create input token IDs and attention mask."""
         super().setUp()
-        self.input_ids = tf.constant(np.random.randint(30, size=(2, 8)), dtype=tf.int32)
-        self.attn_mask = tf.constant([[1, 1, 1, 1, 1, 0, 0, 0], [1, 1, 1, 1, 1, 1, 1, 1]])
+        self._input_ids = tf.constant(np.random.randint(30, size=(2, 8)), dtype=tf.int32)
+        self._attn_mask = tf.constant([[1, 1, 1, 1, 1, 0, 0, 0], [1, 1, 1, 1, 1, 1, 1, 1]])
 
-    def test_model_transformer_vae_call(self) -> None:
+    def test_bert_rnn_vae_call(self) -> None:
+        """Call the dummy model and check if the output shape is correct."""
         expected_shape = (2, 8, 30)
         # noinspection PyCallingNonCallable
-        logits = self.model((self.input_ids, self.attn_mask), training=False)
-        print(f"The resulting logits are: {logits}")
+        logits = self._model((self._input_ids, self._attn_mask), training=False)
         self.assertEqual(expected_shape, logits.shape)
 
 

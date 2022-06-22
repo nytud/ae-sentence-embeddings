@@ -5,7 +5,7 @@ the KL beta will be annealed linearly between
 arbitrarily adjustable steps `k` and `l`.
 """
 
-from typing import Tuple, Dict, Union
+from typing import Dict, Union
 
 import tensorflow as tf
 from tensorflow.keras.utils import register_keras_serializable
@@ -59,9 +59,9 @@ class KLDivergenceRegularizer(Regularizer):
         self._start = start
         self._min_kl = min_kl
 
-    def __call__(self, activation: Tuple[tf.Tensor, ...]) -> tf.Tensor:
+    def __call__(self, activation: tf.Tensor) -> tf.Tensor:
         """Calculate the actual KL loss."""
-        mu, log_var, *_ = activation
+        mu, log_var = tf.split(activation, 2, axis=-1)
         beta = tf.cast(
             calculate_beta(iters=self._iters, start=self._start, warmup_iters=self._warmup_iters),
             dtype=mu.dtype

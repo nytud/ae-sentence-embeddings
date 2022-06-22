@@ -24,7 +24,6 @@ from transformers.modeling_tf_utils import keras_serializable
 from ae_sentence_embeddings.layers import (
     AeTransformerEncoder,
     AeTransformerDecoder,
-    PostPoolingLayer,
     AveragePoolingLayer,
     PMeansPooling,
     CLSPlusSEPPooling,
@@ -72,7 +71,7 @@ class SentAeEncoder(KModel):
 
     # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
-             training: Optional[bool] = None) -> Tuple[tf.Tensor, Tuple[tf.Tensor]]:
+             training: Optional[bool] = None) -> Tuple[tf.Tensor, Tuple[tf.Tensor, ...]]:
         """Call the encoder.
 
         Args:
@@ -148,11 +147,15 @@ class SentVaeEncoder(SentAeEncoder):
         super().__init__(config, pooling_type, **kwargs)
         hidden_size = 2 * config.hidden_size if self._pooling_type in {"cls_sep", "p_means"} \
             else config.hidden_size
-        self._post_pooling = PostPoolingLayer(
-            hidden_size=hidden_size,
-            initializer_range=config.initializer_range,
-            activity_regularizer=KLDivergenceRegularizer(**reg_args)
+        self._post_pooling = tfl.Dense(
+            units=hidden_size * 2,
+            input_shape=(None, hidden_size),
+            kernel_initializer=TruncatedNormal(stddev=config.initializer_range),
+            activity_regularizer=KLDivergenceRegularizer(**reg_args),
+            name="post_pooling_dense"
         )
+        # Define a layer to split the Gaussian vectors to mean and logvar
+        self._post_pooling_splitter = tfl.Lambda(lambda x: tf.split(x, 2, axis=-1))
         # If the `iters` key in the KL arguments dict if a `tf.Variable`, set it to `0`.
         iters_name = "iters"
         iters = reg_args[iters_name]
@@ -162,12 +165,12 @@ class SentVaeEncoder(SentAeEncoder):
         self._reg_args[iters_name] = iters
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
-             training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Tuple[tf.Tensor]]:
-        """Call the encoder
+             training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Tuple[tf.Tensor, ...]]:
+        """Call the encoder.
 
         Args:
             inputs: Input IDs tensor with shape `(batch_size, sequence_length)`
-                    and attention mask with shape `(batch_size, sequence_length)`.
+                and attention mask with shape `(batch_size, sequence_length)`.
             training: Specifies whether the model is being used in training mode.
 
         Returns:
@@ -175,8 +178,9 @@ class SentVaeEncoder(SentAeEncoder):
         """
         pooling_output, encoder_outputs = super().call(inputs, training=training)
         # noinspection PyCallingNonCallable
-        post_pooling_mean, post_pooling_logvar = self._post_pooling(pooling_output)
-        return post_pooling_mean, post_pooling_logvar, encoder_outputs
+        post_pooling_tensor = self._post_pooling(pooling_output)
+        mean, logvar = self._post_pooling_splitter(post_pooling_tensor)
+        return mean, logvar, encoder_outputs
 
     @property
     def reg_args(self) -> MappingProxyType:
