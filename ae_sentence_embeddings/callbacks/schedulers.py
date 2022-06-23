@@ -209,7 +209,7 @@ class VaeLogger(Callback):
         self._beta_warmup_iters = beta_warmup_iters
         self._beta_warmup_start = beta_warmup_start
 
-    def on_train_batch_end(self, batch: int, logs: Dict[str, Any]) -> None:
+    def on_train_batch_end(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
         """Calculate the actual learning rate and KL beta values."""
         iteration = self.model.optimizer.iterations
         if iteration % self.log_update_freq == 0:

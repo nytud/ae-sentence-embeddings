@@ -194,8 +194,10 @@ def main() -> None:
     logger.debug(f"An example from the training dataset:\n{next(iter(train_dataset))}")
     train_dataset = train_dataset.prefetch(1)
 
+    project, run_name = args.pop("project"), args.pop("run_name")
+    wandb.init(config=args, project=project, name=run_name)
     callbacks = [
-        AeCustomCheckpoint(args["checkpoint_dir"], save_freq=args["save_freq"]),
+        AeCustomCheckpoint(args["checkpoint_dir"], save_freq=args["save_freq"], no_serialization=True),
         VaeLogger(
             log_update_freq=args["log_update_freq"],
             beta_warmup_iters=args["beta_warmup_iters"],
@@ -204,8 +206,6 @@ def main() -> None:
         DevEvaluator(devel_dataset, logger="WandB", log_freq=args["validation_freq"]),
         WandbCallback(save_model=False, log_batch_frequency=args["log_update_freq"])
     ]
-    project, run_name = args.pop("project"), args.pop("run_name")
-    wandb.init(config=args, project=project, name=run_name)
 
     strategy = strategy_setup()
     with strategy.scope():

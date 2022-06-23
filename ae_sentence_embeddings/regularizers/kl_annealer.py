@@ -27,8 +27,8 @@ def calculate_beta(
     Returns:
         The actual beta value.
     """
-    iteration = tf.cond(iters > start, lambda: iters - start, lambda: 0.)
-    return tf.minimum(iteration / warmup_iters, 1.)
+    iteration = tf.cond(iters > start, lambda: tf.cast(iters - start, tf.float32), lambda: 0.)
+    return tf.minimum(tf.divide(iteration, tf.cast(warmup_iters, tf.float32)), 1.)
 
 
 @register_keras_serializable(package="ae_sentence_embeddings")
@@ -77,10 +77,9 @@ class KLDivergenceRegularizer(Regularizer):
         will be lost. The reason for this is that the `__init__` parameter `iters`
         will be filled in with the constant value `0`.
         """
-        base_config = super(KLDivergenceRegularizer, self).get_config()
         return {
-            **base_config,
             "iters": 0,
+            "warmup_iters": self._warmup_iters,
             "start": self._start,
-            "warmup_iters": self._warmup_iters
+            "min_kl": self._min_kl
         }
