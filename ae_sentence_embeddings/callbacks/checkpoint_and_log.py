@@ -43,25 +43,33 @@ class AeCustomCheckpoint(Callback):
         if not exists(checkpoint_root):
             mkdir(checkpoint_root)
         self._checkpoint_root = os_path_join(checkpoint_root, strftime("run_%Y_%m_%d-%H_%M_%S"))
+        if not exists(self._checkpoint_root):
+            mkdir(self._checkpoint_root)
         self.save_freq = save_freq
         self.save_optimizer = save_optimizer
         self.no_serialization = no_serialization
+        self._step = 0
 
     def _make_checkpoint(self, subdir_name: Union[int, str]) -> None:
         """Helper function to create checkpoints.
 
         Args:
-            subdir_name: A subdirectory for the checkpoint files
+            subdir_name: A subdirectory for the checkpoint files.
         """
         subdir_path = os_path_join(self._checkpoint_root, subdir_name)
-        weight_dir = os_path_join(subdir_path, f"weight_{subdir_name}.ckpt")
+        if not exists(subdir_path):
+            mkdir(subdir_path)
+        weight_path = os_path_join(subdir_path, f"weight_{subdir_name}.ckpt")
         if not self.no_serialization:
-            self.model.save(weight_dir, include_optimizer=self.save_optimizer)
+            self.model.save(weight_path, include_optimizer=self.save_optimizer)
         elif hasattr(self.model, "checkpoint"):
-            optimizer_path = os_path_join(subdir_path, f"optim_{subdir_name}.pkl") if self.save_optimizer else None
-            self.model.checkpoint(weight_dir, optimizer_path=optimizer_path)
+            if self.save_optimizer:
+                optimizer_path = os_path_join(subdir_path, f"optim_{subdir_name}.pkl")
+            else:
+                optimizer_path = None
+            self.model.checkpoint(weight_path, optimizer_path=optimizer_path)
         else:
-            self.model.save_weights(weight_dir)
+            self.model.save_weights(weight_path)
             warn("The model does not implement a `checkpoint` method. The optimizer state was not saved.")
 
     def on_epoch_end(self, epoch: int, logs: Optional[Dict[str, Any]] = None) -> None:
@@ -73,12 +81,13 @@ class AeCustomCheckpoint(Callback):
         """Create checkpoint or pass according to `save_freq`.
         Update the global batch ID (number of batch independently of the epoch)
         """
-        if isinstance(self.save_freq, int) and self.model.optimizer.iterations % self.save_freq == 0:
-            self._make_checkpoint(f"step_{self.model.optimizer.iterations}")
+        if isinstance(self.save_freq, int) and self._step % self.save_freq == 0 and self._step != 0:
+            self._make_checkpoint(f"step_{self._step}")
+        self._step += 1
 
     def on_train_end(self, logs: Optional[Dict[str, Any]] = None) -> None:
         """Save model on training end if not saved yet"""
-        if isinstance(self.save_freq, int) and self.model.optimizer.iterations % self.save_freq != 0:
+        if isinstance(self.save_freq, int) and self._step % self.save_freq != 0:
             self._make_checkpoint("train_end")
 
 
