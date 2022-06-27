@@ -34,7 +34,7 @@ from ae_sentence_embeddings.argument_handling import (
     RnnArgs
 )
 from ae_sentence_embeddings.modeling_tools import get_custom_logger, read_json, timing
-from ae_sentence_embeddings.callbacks import AeCustomCheckpoint, DevEvaluator, VaeLogger
+from ae_sentence_embeddings.callbacks import AeCustomCheckpoint, DevEvaluator, VaeLogger, RegCallback
 from ae_sentence_embeddings.losses_and_metrics import IgnorantSparseCatCrossentropy
 from ae_sentence_embeddings.models import BertRnnVae
 
@@ -204,6 +204,7 @@ def main() -> None:
             beta_warmup_start=args["beta_warmup_start"],
         ),
         DevEvaluator(devel_dataset, logger="WandB", log_freq=args["validation_freq"]),
+        RegCallback("reg_loss", log_update_freq=args["log_update_freq"]),
         WandbCallback(save_model=False, log_batch_frequency=args["log_update_freq"])
     ]
 
