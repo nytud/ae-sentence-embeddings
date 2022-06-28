@@ -162,40 +162,6 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
             "reg_args": {**self._encoder.reg_args}
         }
 
-    def train_step(self, data: Tuple[Tuple[tf.Tensor, tf.Tensor], tf.Tensor]) -> Dict[str, Any]:
-        """Define a custom train step so that the KL loss gets logged properly.
-        The training step is implemented as recommended at
-        https://keras.io/guides/customizing_what_happens_in_fit/
-        """
-        x, y = data
-        with tf.GradientTape() as tape:
-            # noinspection PyCallingNonCallable
-            y_hat = self(x, training=True)
-            loss = self.compiled_loss(y, y_hat, regularization_losses=self.losses)
-        kl_reg_loss = tf.reduce_sum(self._encoder.losses)
-        trainable_vars = self.trainable_variables
-        gradients = tape.gradient(loss, trainable_vars)
-        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
-        self.compiled_metrics.update_state(y, y_hat)
-        metric_dict = {m.name: m.result() for m in self.metrics}
-        metric_dict["reg_loss"] = kl_reg_loss
-        return metric_dict
-
-    def test_step(self, data: Tuple[Tuple[tf.Tensor, tf.Tensor], tf.Tensor]) -> Dict[str, Any]:
-        """Define a custom test step so that the KL loss gets logged properly.
-        The training step is implemented as recommended at
-        https://keras.io/guides/customizing_what_happens_in_fit/
-        """
-        x, y = data
-        # noinspection PyCallingNonCallable
-        y_pred = self(x, training=False)
-        self.compiled_loss(y, y_pred, regularization_losses=self.losses)
-        kl_reg_loss = tf.reduce_sum(self._encoder.losses)
-        self.compiled_metrics.update_state(y, y_pred)
-        metric_dict = {m.name: m.result() for m in self.metrics}
-        metric_dict["reg_loss"] = kl_reg_loss
-        return metric_dict
-
 
 # noinspection PyCallingNonCallable
 class TransformerAe(BaseAe):
