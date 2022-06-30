@@ -172,7 +172,7 @@ def process_data(
     dataset = pad_and_batch(
         tf_dataset=dataset,
         data_stream_args=data_stream_args,
-        drop_remainder=False
+        drop_remainder=True
     )
     return dataset
 
