@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""A module for defining Transformer-based AEs"""
+"""A module for defining Transformer-based AEs."""
 
 # Note that does not often recognize whether that Keras layer or model is callable.
 # This is the reason why the corresponding inspection were suppressed for some functions and classes.
@@ -73,21 +73,29 @@ class BaseAe(KModel, metaclass=ABCMeta):
 
     def load_checkpoint(self, weight_path: str, optimizer_path: Optional[str] = None,
                         **kwargs) -> None:
-        """Load model from checkpoint
+        """Load the model from a checkpoint.
+
+        The optimizer weights are loaded as proposed at `https://stackoverflow.com/a/63089235`.
 
         Args:
-            weight_path: Path to the saved model weights
-            optimizer_path: Optional. Path to saved optimizer state file
-            **kwargs: Further arguments passed to the `load_weights` method
+            weight_path: Path to the saved model weights.
+            optimizer_path: Optional. Path to saved optimizer state file.
+            **kwargs: Further arguments passed to the `load_weights` method.
         """
-        self.load_weights(weight_path, **kwargs)
+        # noinspection PyCallingNonCallable
+        self((tf.keras.Input(shape=(None,), dtype=tf.int32),
+              tf.keras.Input(shape=(None,), dtype=tf.int32)))  # Build the model weights
         if optimizer_path is not None:
             if self.optimizer is None:
                 warn("Cannot load optimizer as no optimizer has been defined")
             else:
-                with open(optimizer_path, 'rb') as f:
+                grad_vars = self.trainable_weights
+                zero_grads = [tf.zeros_like(w) for w in grad_vars]
+                self.optimizer.apply_gradients(zip(zero_grads, grad_vars))
+                with open(optimizer_path, "rb") as f:
                     optimizer_weights = pickle.load(f)
                 self.optimizer.set_weights(optimizer_weights)
+        self.load_weights(weight_path, **kwargs)
 
     @abstractmethod
     def call(self, inputs, training=None):

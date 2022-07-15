@@ -30,6 +30,7 @@ from ae_sentence_embeddings.argument_handling import (
     check_if_positive_float,
     check_if_non_negative_float,
     check_if_output_path,
+    check_if_file,
     DataStreamArgs,
     RnnArgs
 )
@@ -83,6 +84,13 @@ def get_pretrain_args() -> Namespace:
     model_args.add_argument("--save-freq", dest="save_freq", type=check_if_positive_int, default=1000,
                             help="The number of iterations after which a checkpoint will be created. "
                                  "Defaults to `1000`.")
+    model_args.add_argument("--trained-model", dest="trained_model", type=check_if_output_path,
+                            help="A checkpoint of model weights which will be loaded before "
+                                 "the training starts. Optional.")
+    model_args.add_argument("--trained-optimizer", dest="trained_optimizer", type=check_if_file,
+                            help="A checkpoint of optimizer weights which will be loaded before the training "
+                                 "starts This takes effect only if a model weight checkpoint was specified "
+                                 "as well. Optional.")
     lr_args = parser.add_argument_group("Optimizer and scheduler")
     lr_args.add_argument("--learning-rate", dest="learning_rate", type=check_if_positive_float,
                          default=1e-5, help="The initial learning rate. Defaults to `1e-5`.")
@@ -106,7 +114,7 @@ def get_pretrain_args() -> Namespace:
     kl_args.add_argument("--beta-warmup-iters", dest="beta_warmup_iters", type=check_if_positive_int, default=1000,
                          help="The number of iterations while the KL loss `beta` will be annealed. "
                               "Defaults to `1000`.")
-    kl_args.add_argument("--beta-warmup-start", dest="beta_warmup_start", type=check_if_positive_int, default=1000,
+    kl_args.add_argument("--beta-warmup-start", dest="beta_warmup_start", type=int, default=1000,
                          help="The iteration after which the KL loss `beta` will start to be annealed. "
                               "Defaults to `1000`.")
     kl_args.add_argument("--min-kl", dest="min_kl", type=check_if_non_negative_float, default=0.,
@@ -240,13 +248,16 @@ def main() -> None:
             optimizer=optimizer,
             metrics=[IgnorantSparseCatCrossentropyMetric(from_logits=True)]
         )
-        logger.debug(f"Training has begun!")
-        _ = model.fit(
-            x=train_dataset,
-            epochs=args["epochs"],
-            callbacks=callbacks,
-            verbose=2
-        )
+        if args["trained_model"] is not None:
+            logger.debug("Loading weights from checkpoint...")
+            strategy.run(model.load_checkpoint, (args["trained_model"], args["trained_optimizer"]))
+    logger.debug("Training has begun!")
+    _ = model.fit(
+        x=train_dataset,
+        epochs=args["epochs"],
+        callbacks=callbacks,
+        verbose=2
+    )
 
 
 if __name__ == "__main__":
