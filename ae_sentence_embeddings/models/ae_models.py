@@ -144,8 +144,8 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
             self,
             enc_config: BertConfig,
             dec_config: Union[OpenAIGPTConfig, RnnArgs],
-            pooling_type: Literal["cls_sep", "average", "p_means"],
-            reg_args: Dict[str, Union[tf.Variable, int]],
+            pooling_type: Literal["cls_sep", "average", "p_means"] = "average",
+            reg_args: Optional[Dict[str, Union[tf.Variable, int]]] = None,
             **kwargs
     ) -> None:
         """Initialize the VAE.
@@ -153,11 +153,14 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
         Args:
             enc_config: The encoder configuration object.
             dec_config: The decoder configuration object.
-            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`.
-            reg_args: KL loss regularization arguments.
+            pooling_type: Pooling method`, "average"`, `"p_means"` or `"cls_sep"`.
+                Defaults to `"average"`.
+            reg_args: KL loss regularization arguments. Optional.
             **kwargs: Keyword arguments for the `keras.Model` class.
         """
         super().__init__(enc_config, dec_config, pooling_type=pooling_type, **kwargs)
+        if reg_args is None:
+            reg_args = {"warmup_iters": 1, "iters": 0}
         self._encoder = SentVaeEncoder(
             self._enc_config, pooling_type=pooling_type, reg_args=reg_args)
         self._sampler = VaeSampling()

@@ -5,20 +5,19 @@ a classifier head on top.
 """
 
 from __future__ import annotations
-from typing import Literal, Tuple, Optional, Dict, Any
+from typing import Literal, Tuple, Optional, Dict, Any, Union
 
 import tensorflow as tf
 from tensorflow.keras import layers as tfl
-from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import register_keras_serializable
 from transformers import BertConfig
 from transformers.modeling_tf_utils import get_initializer
 
-from ae_sentence_embeddings.models import SentVaeEncoder
+from ae_sentence_embeddings.models import SentVaeEncoder, BaseAe
 
 
 @register_keras_serializable(package="ae_sentence_embeddings.models")
-class SentVaeClassifier(SentVaeEncoder):
+class SentVaeClassifier(SentVaeEncoder, BaseAe):
     """The encoder part of a sentence embedding VAE
     with a classifier head on top.
     """
@@ -27,9 +26,8 @@ class SentVaeClassifier(SentVaeEncoder):
             self,
             config: BertConfig,
             num_labels: int,
-            pooling_type: Literal["average", "cls_sep"] = "cls_sep",
-            kl_factor: float = 0.,
-            min_kl: float = 0.,
+            pooling_type: Literal["average", "cls_sep", "p_means"] = "average",
+            reg_args: Optional[Dict[str, Union[tf.Variable, int]]] = None,
             **kwargs
     ) -> None:
         """Initialize the encoder and the classifier head.
@@ -39,16 +37,18 @@ class SentVaeClassifier(SentVaeEncoder):
         Args:
             config: A BERT configuration object.
             num_labels: The number of classification labels. Set it to `1` for binary classification.
-            pooling_type: Pooling type, `'average'` or `'cls_sep'`. Defaults to `'cls_sep'`.
-            kl_factor: A normalizing constant by which the KL loss will be multiplied.
-                Set it to zero if the KL loss should be ignored. Defaults to `0.0`.
-            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`.
+            pooling_type: Pooling type, `'average'` or `'cls_sep'`. Defaults to `'average'`.
+            reg_args: KL loss regularization arguments. If not specified, the KL loss will always be 0.
+                Optional.
             **kwargs: Keyword arguments passed to the `keras.Model` initializer.
+
+        Raises:
+            `AssertionError` if `num_labels < 0`.
         """
-        if num_labels <= 0:
-            raise ValueError(f"The number of labels must be a positive integer, got {num_labels}")
-        super().__init__(config=config, pooling_type=pooling_type,
-                         kl_factor=kl_factor, min_kl=min_kl, **kwargs)
+        assert num_labels <= 0, f"The number of labels must be a positive integer, got {num_labels}"
+        if reg_args is None:
+            reg_args = {"iters": 0, "warmup_iters": 1, "start": 0, "min_kl": 0.}
+        super().__init__(config=config, pooling_type=pooling_type, reg_args=reg_args, **kwargs)
         self._num_labels = num_labels
         classifier_dropout = config.classifier_dropout if config.classifier_dropout is not None \
             else config.hidden_dropout_prob
@@ -75,45 +75,6 @@ class SentVaeClassifier(SentVaeEncoder):
         post_pooling_mean, _, _ = super().call(inputs, training=training)
         return self._classifier(self._dropout(post_pooling_mean, training=training))
 
-    @classmethod
-    def from_pretrained(cls, ckpt_path: str, num_labels: int = 1,
-                        kl_factor: Optional[float] = 0., min_kl: Optional[float] = 0.) -> SentVaeClassifier:
-        """Load the encoder weights from a pre-trained model.
-
-        Args:
-            ckpt_path: Path to a Keras-serialized model checkpoint.
-            num_labels: Number of classification labels. Defaults to `1`.
-            kl_factor: A value which will override the KL multiplier of the
-                pre-trained model. Set it to `None` to omit this. Defaults to `0.`.
-            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`.
-
-        Returns:
-            A model whit pre-trained encoder weights and newly initialized classifier weights.
-        """
-        if num_labels <= 0:
-            raise ValueError(f"The number of labels must be a positive integer, got {num_labels}")
-
-        # load the pre-trained model and get its configuration
-        pre_trained_model = load_model(ckpt_path)
-        pre_trained_config = pre_trained_model.get_config()
-        pre_trained_encoder_config = BertConfig(**pre_trained_config["encoder_config"])
-        pre_trained_encoder_config.num_labels = num_labels
-        new_kl_factor = kl_factor if kl_factor is not None else pre_trained_config["kl_factor"]
-        new_min_kl = min_kl if min_kl is not None else pre_trained_config["min_kl"]
-
-        # create the new model
-        new_model = cls(pre_trained_encoder_config, pooling_type=pre_trained_config["pooling_type"],
-                        kl_factor=new_kl_factor, min_kl=new_min_kl, num_labels=num_labels)
-        # build the model by calling it on dummy inputs
-        dummy_inputs = (tf.constant([[0, 1, 2]]), tf.constant([[1, 1, 1]]))
-        # noinspection PyCallingNonCallable
-        _ = new_model(dummy_inputs, training=False)
-
-        # copy the weights
-        for pre_trained_layer, new_layer in zip(pre_trained_model.layers, new_model.layers):
-            new_layer.set_weights(pre_trained_layer.get_weights())
-        return new_model
-
     def get_config(self) -> Dict[str, Any]:
         base_config = super().get_config()
         return {**base_config, "num_labels": self._num_labels}
@@ -121,3 +82,14 @@ class SentVaeClassifier(SentVaeEncoder):
     @property
     def num_labels(self) -> int:
         return self._num_labels
+
+    @property
+    def enc_config(self) -> None:
+        raise NotImplementedError(
+            "Please call the `get_config` method to get the model configuration.")
+
+    @property
+    def dec_config(self) -> None:
+        raise NotImplementedError(
+            "This model does not have a decoder part. Please call the `get_config` "
+            "method to get the model configuration.")

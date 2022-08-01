@@ -54,7 +54,7 @@ class KLDivergenceRegularizer(Regularizer):
                 Defaults to `0.0`.
         """
         super(KLDivergenceRegularizer, self).__init__()
-        self._iters = iters
+        self._iters = tf.convert_to_tensor(iters) if isinstance(iters, int) else iters
         self._warmup_iters = warmup_iters
         self._start = start
         self._min_kl = min_kl
