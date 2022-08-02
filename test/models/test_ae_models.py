@@ -28,12 +28,7 @@ class TransformerVaeTest(tf.test.TestCase):
             vocab_size=30,
             hidden_size=128
         )
-        reg_args = {
-            "iters": 0,
-            "warmup_iters": 4
-        }
-        cls._model = BertRnnVae(enc_config, dec_config,
-                                reg_args=reg_args, pooling_type="average")
+        cls._model = BertRnnVae(enc_config, dec_config)
 
     def setUp(self) -> None:
         """Fixture setup. Create input token IDs and attention mask."""

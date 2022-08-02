@@ -32,7 +32,8 @@ from ae_sentence_embeddings.argument_handling import (
     check_if_output_path,
     check_if_file,
     DataStreamArgs,
-    RnnArgs
+    RnnArgs,
+    KlArgs
 )
 from ae_sentence_embeddings.modeling_tools import get_custom_logger, read_json, timing
 from ae_sentence_embeddings.callbacks import AeCustomCheckpoint, DevEvaluator, VaeLogger
@@ -236,12 +237,12 @@ def main() -> None:
             enc_config=BertConfig.from_dict(args["encoder_config"]),
             dec_config=RnnArgs.collect_from_dict(args["decoder_config"]),
             pooling_type=args["pooling_type"],
-            reg_args={
-                "iters": optimizer.iterations,
-                "warmup_iters": args["beta_warmup_iters"],
-                "start": args["beta_warmup_start"],
-                "min_kl": args["min_kl"]
-            }
+            reg_args=KlArgs(
+                iters=optimizer.iterations,
+                warmup_iters=args["beta_warmup_iters"],
+                start=args["beta_warmup_start"],
+                min_kl=args["min_kl"]
+            )
         )
         model.compile(
             loss=IgnorantSparseCatCrossentropy(from_logits=True),

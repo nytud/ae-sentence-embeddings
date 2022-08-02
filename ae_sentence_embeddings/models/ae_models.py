@@ -19,7 +19,7 @@ from tensorflow.keras import Model as KModel
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 
-from ae_sentence_embeddings.argument_handling import RnnArgs
+from ae_sentence_embeddings.argument_handling import RnnArgs, KlArgs
 from ae_sentence_embeddings.layers import VaeSampling
 from ae_sentence_embeddings.models import (
     SentVaeEncoder,
@@ -110,9 +110,10 @@ class BaseAe(KModel, metaclass=ABCMeta):
             "pooling_type": self._pooling_type
         }
 
-    @classmethod
-    def from_config(cls, config: Dict[str, Any]) -> BaseAe:
-        encoder_config = BertConfig(**config.pop("encoder_config"))
+    @staticmethod
+    def _get_decoder_config(config: Dict[str, Any]) -> Union[OpenAIGPTConfig, RnnArgs]:
+        """A helper method to get the set up the decoder config
+        from a general configuration object."""
         decoder_config_name = config.pop("decoder_config_type")
         if decoder_config_name == OpenAIGPTConfig.__name__:
             decoder_config_type = OpenAIGPTConfig
@@ -121,8 +122,13 @@ class BaseAe(KModel, metaclass=ABCMeta):
         else:
             raise ValueError(f"The decoder config class must be either {OpenAIGPTConfig.__name__} "
                              f"or {RnnArgs.__name__}, got {decoder_config_name}")
-        decoder_config = decoder_config_type(**config.pop("decoder_config"))
-        return cls(encoder_config, decoder_config, **config)
+        return decoder_config_type(**config.pop("decoder_config"))
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any], **kwargs) -> BaseAe:
+        encoder_config = BertConfig(**config.pop("encoder_config"))
+        decoder_config = cls._get_decoder_config(config)
+        return cls(encoder_config, decoder_config, **config, **kwargs)
 
     @property
     def enc_config(self) -> MappingProxyType:
@@ -145,7 +151,7 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
             enc_config: BertConfig,
             dec_config: Union[OpenAIGPTConfig, RnnArgs],
             pooling_type: Literal["cls_sep", "average", "p_means"] = "average",
-            reg_args: Optional[Dict[str, Union[tf.Variable, int]]] = None,
+            reg_args: Optional[KlArgs] = None,
             **kwargs
     ) -> None:
         """Initialize the VAE.
@@ -159,8 +165,6 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
             **kwargs: Keyword arguments for the `keras.Model` class.
         """
         super().__init__(enc_config, dec_config, pooling_type=pooling_type, **kwargs)
-        if reg_args is None:
-            reg_args = {"warmup_iters": 1, "iters": 0}
         self._encoder = SentVaeEncoder(
             self._enc_config, pooling_type=pooling_type, reg_args=reg_args)
         self._sampler = VaeSampling()
@@ -173,10 +177,23 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
             "reg_args": {**self._encoder.reg_args}
         }
 
+    @classmethod
+    def from_config(cls, config: Dict[str, Any], **kwargs) -> BaseAe:
+        """Initialize the model from a configuration dict."""
+        encoder_config = BertConfig(**config.pop("encoder_config"))
+        decoder_config = cls._get_decoder_config(config)
+        reg_args = KlArgs(**config.pop("reg_args"))
+        return cls(
+            enc_config=encoder_config,
+            dec_config=decoder_config,
+            reg_args=reg_args,
+            **config, **kwargs
+        )
+
 
 # noinspection PyCallingNonCallable
 class TransformerAe(BaseAe):
-    """A Transformer-based AE"""
+    """A Transformer-based AE."""
 
     def __init__(
             self, enc_config: BertConfig,
@@ -214,56 +231,15 @@ class TransformerAe(BaseAe):
 
 
 # noinspection PyCallingNonCallable
-class TransformerVae(BaseVae):
-    """A Transformer-based VAE"""
-
-    def __init__(
-            self,
-            enc_config: BertConfig,
-            dec_config: OpenAIGPTConfig,
-            pooling_type: Literal["cls_sep", "average", "p_means"],
-            reg_args: Dict[str, Union[tf.Variable, int]],
-            **kwargs
-    ) -> None:
-        """Initialize the VAE.
-
-        Args:
-            enc_config: The encoder configuration object.
-            dec_config: The decoder configuration object.
-            pooling_type: Pooling method`, "average"` or `"cls_sep"`. Defaults to `"cls_sep"`.
-            reg_args: KL loss regularization arguments.
-            **kwargs: Keyword arguments for the `keras.Model` class.
-        """
-        super().__init__(enc_config, dec_config, pooling_type=pooling_type,
-                         reg_args=reg_args, **kwargs)
-        self._decoder = SentAeDecoder(self._dec_config)
-
-    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor], training: Optional[bool] = None) -> tf.Tensor:
-        """Call the full model
-
-        Args:
-            inputs: A tensor of input token IDs and a tensor of attention mask
-            training: Specifies whether the model is being used in training mode
-
-        Returns:
-            The logits of a probability distribution for next token prediction
-        """
-        input_ids, attn_mask = inputs
-        mean, log_var, _ = self._encoder((input_ids, attn_mask), training=training)
-        sent_embedding = self._sampler((mean, log_var))
-        logits = self._decoder(inputs=(sent_embedding, input_ids, attn_mask), training=training)
-        return logits
-
-
-# noinspection PyCallingNonCallable
 class BertRnnVae(BaseVae):
     """A VAE with a Bert encoder and an RNN decoder."""
 
     def __init__(
-            self, enc_config: BertConfig,
+            self,
+            enc_config: BertConfig,
             dec_config: RnnArgs,
-            pooling_type: Literal["average", "cls_sep"],
-            reg_args: Dict[str, Union[tf.Variable, int]],
+            pooling_type: Literal["average", "cls_sep", "p_means"] = "average",
+            reg_args: Optional[KlArgs] = None,
             **kwargs
     ) -> None:
         """Initialize the model."""

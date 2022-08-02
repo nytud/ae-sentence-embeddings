@@ -13,6 +13,7 @@ from abc import ABCMeta, abstractmethod
 from pathlib import Path
 from functools import partial
 
+from tensorflow import Variable
 from transformers import BertConfig, OpenAIGPTConfig
 
 
@@ -424,6 +425,8 @@ class PositionalEmbeddingArgs(RegularizedEmbeddingArgs):
 @dataclass
 class KlArgs(DeeplArgs):
     """A dataclass for handling the KL loss term."""
+    iters: Union[Variable, int] = field(
+        metadata={"help": "The iteration counter as a `tf.Variable` or a constant."})
     warmup_iters: int = field(metadata={"help": "The number of warmup steps."})
     start: int = field(
         default=0,

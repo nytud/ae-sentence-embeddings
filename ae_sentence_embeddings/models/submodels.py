@@ -8,7 +8,7 @@ Defining them as a model allows to use them separately after pre-training
 # This is the reason why the corresponding inspection were suppressed for some functions and classes.
 
 from __future__ import annotations
-from typing import Tuple, Optional, Literal, Dict, Any, Union
+from typing import Tuple, Optional, Literal, Dict, Any
 from types import MappingProxyType
 from copy import deepcopy
 
@@ -35,7 +35,8 @@ from ae_sentence_embeddings.regularizers import KLDivergenceRegularizer
 from ae_sentence_embeddings.modeling_tools import process_attention_mask, make_decoder_inputs
 from ae_sentence_embeddings.argument_handling import (
     RnnLayerArgs, RnnArgs,
-    PositionalEmbeddingArgs
+    PositionalEmbeddingArgs,
+    KlArgs
 )
 
 
@@ -132,21 +133,25 @@ class SentVaeEncoder(SentAeEncoder):
     def __init__(
             self,
             config: BertConfig,
-            pooling_type: Literal["average", "cls_sep", "p_means"],
-            reg_args: Dict[str, Union[tf.Variable, int]],
+            pooling_type: Literal["average", "cls_sep", "p_means"] = "average",
+            reg_args: Optional[KlArgs] = None,
             **kwargs
     ) -> None:
         """Initialize the encoder.
 
         Args:
             config: A BERT configuration object.
-            pooling_type: Pooling type, `'average'` or `'cls_sep'`.
-            reg_args: KL loss regularization arguments.
+            pooling_type: Pooling type, `'average'`, `'cls_sep'` or `'p_means'`.
+                Defaults to `'average'`.
+            reg_args: KL loss regularization arguments. Optional.
             **kwargs: Keyword arguments for the parent class.
         """
         super().__init__(config, pooling_type, **kwargs)
         hidden_size = 2 * config.hidden_size if self._pooling_type in {"cls_sep", "p_means"} \
             else config.hidden_size
+        if reg_args is None:
+            reg_args = KlArgs(iters=0, warmup_iters=1)
+        reg_args = reg_args.to_dict()
         self._post_pooling = tfl.Dense(
             units=hidden_size * 2,
             input_shape=(None, hidden_size),
@@ -156,13 +161,8 @@ class SentVaeEncoder(SentAeEncoder):
         )
         # Define a layer to split the Gaussian vectors to mean and logvar
         self._post_pooling_splitter = tfl.Lambda(lambda x: tf.split(x, 2, axis=-1))
-        # If the `iters` key in the KL arguments dict if a `tf.Variable`, set it to `0`.
-        iters_name = "iters"
-        iters = reg_args[iters_name]
-        if isinstance(iters, tf.Variable):
-            iters = 0
-        self._reg_args = {k: v for k, v in reg_args.items() if k != iters_name}
-        self._reg_args[iters_name] = iters
+        self._reg_args = reg_args
+        self._reg_args["iters"] = 0
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Tuple[tf.Tensor, ...]]:
@@ -198,6 +198,13 @@ class SentVaeEncoder(SentAeEncoder):
             **base_config,
             "reg_args": deepcopy(self._reg_args)
         }
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any], **kwargs) -> SentAeEncoder:
+        """Initialize the model from a configuration object."""
+        reg_args = KlArgs(**config.pop("reg_args"))
+        encoder_config = BertConfig(**config.pop("encoder_config"))
+        return cls(config=encoder_config, reg_args=reg_args, **config, **kwargs)
 
 
 # noinspection PyAbstractClass
@@ -255,14 +262,14 @@ class SentAeDecoder(KModel):
 
 
 class SentAeGRUDecoder(KModel):
-    """A GRU-based full decoder"""
+    """A GRU-based full decoder."""
 
     def __init__(self, config: RnnArgs, **kwargs) -> None:
-        """Layer initializer
+        """Layer initializer.
 
         Args:
-            config: An RNN configuration dataclass object
-            **kwargs: Keyword arguments for the parent class
+            config: An RNN configuration dataclass object.
+            **kwargs: Keyword arguments for the parent class.
         """
         super().__init__(**kwargs)
         self._gru_config = config
