@@ -45,7 +45,7 @@ class SentVaeClassifier(SentVaeEncoder, BaseAe):
         Raises:
             `AssertionError` if `num_labels < 0`.
         """
-        assert num_labels <= 0, f"The number of labels must be a positive integer, got {num_labels}"
+        assert num_labels > 0, f"The number of labels must be a positive integer, got {num_labels}"
         if reg_args is None:
             reg_args = {"iters": 0, "warmup_iters": 1, "start": 0, "min_kl": 0.}
         super().__init__(config=config, pooling_type=pooling_type, reg_args=reg_args, **kwargs)

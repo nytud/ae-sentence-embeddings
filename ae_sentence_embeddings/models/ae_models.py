@@ -11,7 +11,7 @@ import pickle
 from abc import ABCMeta, abstractmethod
 from copy import deepcopy
 from types import MappingProxyType
-from typing import Tuple, Union, Optional, Literal, Dict, Any
+from typing import Tuple, Union, Optional, Literal, Dict, Any, List
 from warnings import warn
 
 import tensorflow as tf
@@ -142,6 +142,14 @@ class BaseAe(KModel, metaclass=ABCMeta):
     def pooling_type(self) -> str:
         return self._pooling_type
 
+    @property
+    def embedding_size(self) -> int:
+        """Get the sentence embedding size."""
+        token_embedding_size = self._enc_config.hidden_size
+        sent_embedding_size = token_embedding_size if self._pooling_type == "average" \
+            else 2 * token_embedding_size
+        return sent_embedding_size
+
 
 class BaseVae(BaseAe, metaclass=ABCMeta):
     """Base class for Transformer-based VAE encoders. Use for subclassing only"""
@@ -189,6 +197,44 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
             reg_args=reg_args,
             **config, **kwargs
         )
+
+    def generate_tokens(
+            self,
+            embedding: tf.Tensor,
+            bos_id: int,
+            eos_id: int,
+            max_length: int = 100
+    ) -> List[int]:
+        """A method that allows to generate text from input vectors.
+
+        Args:
+            embedding: The input vector that will serve as sentence embedding.
+                Its shape is either `(1, embedding_size)` or `(embedding_size,)`.
+            bos_id: The token ID that indicates the text start.
+            eos_id: The token ID that indicates the text end.
+            max_length: The maximal length of the generated text (in tokens).
+                If an `eos_id` is not encountered in `max_length` steps, the
+                generation will be stopped anyway. Defaults to `100`.
+
+        Returns:
+            The token IDs of the generated text.
+        """
+        if len(embedding.shape) == 1:
+            embedding = tf.expand_dims(embedding, axis=0)
+        sequence = tf.convert_to_tensor([[bos_id]])
+        attn_mask = tf.ones_like(sequence, dtype=sequence.dtype)
+        last_id = bos_id
+        while last_id != eos_id and sequence.shape[-1] < max_length:
+            # noinspection PyCallingNonCallable
+            _, __, transformer_outputs = self._encoder((sequence, attn_mask), training=False)
+            token_embeddings = transformer_outputs[-1]
+            logits = self._decoder((embedding, token_embeddings), training=False)
+            next_id = tf.argmax(logits[:, -1, :], axis=-1)
+            next_id = tf.cast(tf.expand_dims(next_id, 0), sequence.dtype)
+            sequence = tf.concat([sequence, next_id], axis=-1)
+            attn_mask = tf.ones_like(sequence, dtype=sequence.dtype)
+            last_id = tf.squeeze(next_id).numpy()
+        return tf.squeeze(sequence).numpy().tolist()
 
 
 # noinspection PyCallingNonCallable
