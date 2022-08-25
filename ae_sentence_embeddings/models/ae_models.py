@@ -308,7 +308,7 @@ class BertRnnVae(BaseVae):
             The logits of a probability distribution for next token prediction.
         """
         input_ids, attn_mask = inputs
-        mean, log_var, enc_outputs = self._encoder((input_ids, attn_mask), training=training)
+        mean, log_var, _ = self._encoder((input_ids, attn_mask), training=training)
         sent_embedding = self._sampler((mean, log_var))
-        logits = self._decoder((sent_embedding, enc_outputs[-1]), training=training)
+        logits = self._decoder((sent_embedding, input_ids), training=training)
         return logits

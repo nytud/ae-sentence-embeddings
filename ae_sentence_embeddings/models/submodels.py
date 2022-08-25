@@ -17,6 +17,7 @@ from tensorflow.keras import Model as KModel
 from tensorflow.keras import layers as tfl
 from tensorflow.keras.initializers import TruncatedNormal
 from tensorflow.keras.utils import register_keras_serializable
+from transformers import TFSharedEmbeddings
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 from transformers.modeling_tf_utils import keras_serializable
@@ -238,7 +239,7 @@ class SentAeDecoder(KModel):
     # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> tf.Tensor:
-        """Call the decoder
+        """Call the decoder.
 
         Args:
             inputs: An input embedding tensor of shape `(batch_size, hidden_size)`.
@@ -276,9 +277,13 @@ class SentAeGRUDecoder(KModel):
         config_dict = config.to_dict()
         vocab_size = config_dict.pop("vocab_size")
         init_range = config_dict.pop("initializer_dev")
+        self._decoder_embedding = TFSharedEmbeddings(
+            vocab_size=vocab_size,
+            hidden_size=config.hidden_size,
+            initializer_range=init_range,
+            name="decoder_embedding"
+        )
         self._decoder = AeGRUDecoder(**config_dict)
-        self._out_dense = tfl.Dense(
-            vocab_size, kernel_initializer=TruncatedNormal(stddev=init_range))
 
     # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
@@ -287,15 +292,16 @@ class SentAeGRUDecoder(KModel):
 
         Args:
             inputs: An sentence embedding tensor of shape `(batch_size, hidden_size)` and
-                an input token embedding tensor of shape `(batch_size, sequence_length, hidden_size)`.
+                an input token ID tensor of shape `(batch_size, sequence_length)`.
             training: Specifies whether the model is being used in training mode.
 
         Returns:
             Logits for next token prediction
         """
-        sent_embeddings, token_embeddings = inputs
+        sent_embeddings, token_ids = inputs
+        token_embeddings = self._decoder_embedding(token_ids, mode="embedding")
         hidden_output = self._decoder((sent_embeddings, token_embeddings), training=training)
-        logits = self._out_dense(hidden_output)
+        logits = self._decoder_embedding(hidden_output, mode="linear")
         return logits
 
     def get_config(self) -> Dict[str, Any]:
@@ -348,61 +354,3 @@ def parallel_decoders(
     )(outputs)
     return KModel(inputs=[sent_embeddings1, token_embeddings1, sent_embeddings2, token_embeddings2],
                   outputs=outputs, name=name)
-
-
-# noinspection PyCallingNonCallable
-def ae_double_gru(rnn_config: RnnArgs, tok_hidden_size: int) -> KModel:
-    """Define parallel decoders with the functional API.
-
-    Args:
-        rnn_config: The RNN configuration dataclass shared by the two decoders.
-        tok_hidden_size: Embedding size of the input (sub)word vectors.
-
-    Returns:
-        A functional Keras model.
-    """
-    return parallel_decoders(
-        sent_hidden_size=rnn_config.hidden_size,
-        tok_hidden_size=tok_hidden_size,
-        vocab_size=rnn_config.vocab_size,
-        linear_stddev=rnn_config.initializer_dev,
-        decoder_class=AeGRUDecoder,
-        name="double_gru",
-        decoder_kwargs={
-            "num_rnn_layers": rnn_config.num_rnn_layers,
-            "hidden_size": rnn_config.hidden_size,
-            "layernorm_eps": rnn_config.layernorm_eps,
-            "dropout_rate": rnn_config.dropout_rate
-        }
-    )
-
-
-# noinspection PyCallingNonCallable
-def ae_double_transformer_gru(
-        transformer_layers_config: OpenAIGPTConfig,
-        rnn_layers_config: RnnLayerArgs,
-        num_transformer2gru: int
-) -> KModel:
-    """Define parallel decoders with Transformer + GRU layers
-
-    Args:
-        transformer_layers_config: The Transformer configuration data
-        rnn_layers_config: The GRU configuration data
-        num_transformer2gru: number of dense layers between the Transformer and GRU layers
-
-    Returns:
-        A functional Keras model
-    """
-    return parallel_decoders(
-        sent_hidden_size=rnn_layers_config.hidden_size,
-        tok_hidden_size=transformer_layers_config.n_embd,
-        vocab_size=transformer_layers_config.vocab_size,
-        linear_stddev=transformer_layers_config.initializer_range,
-        decoder_class=AeTransformerGRUDecoder,
-        name="double_transformer_gru",
-        decoder_kwargs={
-            "transformer_config": transformer_layers_config,
-            "gru_config": rnn_layers_config,
-            "num_transformer2gru": num_transformer2gru
-        }
-    )
