@@ -4,7 +4,7 @@
 """Tune hyperparameters or run fine-tuning"""
 
 from ae_sentence_embeddings.fine_tuning.fine_tune_encoder import fine_tune, lookup_transformer_type
-from ae_sentence_embeddings.ae_training.pretrain import (
+from ae_sentence_embeddings.fine_tuning.collect_args import (
     collect_wandb_args,
     group_train_args_from_flat
 )
