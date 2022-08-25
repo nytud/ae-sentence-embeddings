@@ -33,7 +33,6 @@ def main() -> None:
         freeze_encoder=bool(config.get("freeze_encoder")),
         validation_freq=config.get("validation_freq", "epoch"),
         dataset_cache_dir=config.get("dataset_cache_dir"),
-        devices=config.get("devices"),
         use_mcc=bool(config.get("use_mcc")),
         num_epochs=config.get("num_epochs", 2),
         drop_remainder=bool(config.get("drop_remainder"))
