@@ -236,6 +236,10 @@ class BaseVae(BaseAe, metaclass=ABCMeta):
             last_id = tf.squeeze(next_id).numpy()
         return tf.squeeze(sequence).numpy().tolist()
 
+    def save_encoder_weights(self, output_path: str) -> None:
+        """Save the encoder weights only."""
+        self._encoder.save_weights(output_path)
+
 
 # noinspection PyCallingNonCallable
 class TransformerAe(BaseAe):
