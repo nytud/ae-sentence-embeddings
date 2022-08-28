@@ -54,7 +54,6 @@ class AeGRUDecoder(tfl.Layer):
         ) for i in range(self._num_rnn_layers)]
         self._dropout = tfl.Dropout(self._dropout_rate)
         self._layernorm_dense = tfl.LayerNormalization(epsilon=self._layernorm_eps)
-        self._layernorm_hs = tfl.LayerNormalization(epsilon=self._layernorm_eps)
         self._layernorm_out = tfl.LayerNormalization(epsilon=self._layernorm_eps)
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
@@ -80,7 +79,6 @@ class AeGRUDecoder(tfl.Layer):
                 training=training
             )
             embeddings = self._layernorm_dense(embeddings)
-            hidden_state = self._layernorm_hs(hidden_state)
             hidden_states.append(hidden_state)
         embeddings = self._dropout(embeddings, training=training)
         return self._layernorm_out(embeddings)
