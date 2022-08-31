@@ -5,7 +5,7 @@
 from os import mkdir
 from os.path import join as os_path_join, exists
 from time import strftime
-from typing import List, Union, Literal, Dict, Any
+from typing import List, Union, Literal, Dict, Any, Optional
 from logging import Logger
 from warnings import warn
 
@@ -43,44 +43,51 @@ class AeCustomCheckpoint(Callback):
         if not exists(checkpoint_root):
             mkdir(checkpoint_root)
         self._checkpoint_root = os_path_join(checkpoint_root, strftime("run_%Y_%m_%d-%H_%M_%S"))
+        if not exists(self._checkpoint_root):
+            mkdir(self._checkpoint_root)
         self.save_freq = save_freq
         self.save_optimizer = save_optimizer
-        self._batch_id = 0
         self.no_serialization = no_serialization
+        self._step = 0
 
     def _make_checkpoint(self, subdir_name: Union[int, str]) -> None:
         """Helper function to create checkpoints.
 
         Args:
-            subdir_name: A subdirectory for the checkpoint files
+            subdir_name: A subdirectory for the checkpoint files.
         """
         subdir_path = os_path_join(self._checkpoint_root, subdir_name)
-        weight_dir = os_path_join(subdir_path, f"weight_{subdir_name}.ckpt")
+        if not exists(subdir_path):
+            mkdir(subdir_path)
+        weight_path = os_path_join(subdir_path, f"weight_{subdir_name}.ckpt")
         if not self.no_serialization:
-            self.model.save(weight_dir, include_optimizer=self.save_optimizer)
+            self.model.save(weight_path, include_optimizer=self.save_optimizer)
         elif hasattr(self.model, "checkpoint"):
-            optimizer_path = os_path_join(subdir_path, f"optim_{subdir_name}.pkl") if self.save_optimizer else None
-            self.model.checkpoint(weight_dir, optimizer_path=optimizer_path)
+            if self.save_optimizer:
+                optimizer_path = os_path_join(subdir_path, f"optim_{subdir_name}.pkl")
+            else:
+                optimizer_path = None
+            self.model.checkpoint(weight_path, optimizer_path=optimizer_path)
         else:
-            self.model.save_weights(weight_dir)
+            self.model.save_weights(weight_path)
             warn("The model does not implement a `checkpoint` method. The optimizer state was not saved.")
 
-    def on_epoch_end(self, epoch: int, logs=None) -> None:
+    def on_epoch_end(self, epoch: int, logs: Optional[Dict[str, Any]] = None) -> None:
         """Save model if `save_freq == "epoch"`"""
         if self.save_freq == "epoch":
             self._make_checkpoint(f"epoch_{epoch+1}")
 
-    def on_batch_end(self, batch: int, logs=None) -> None:
+    def on_train_batch_end(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
         """Create checkpoint or pass according to `save_freq`.
         Update the global batch ID (number of batch independently of the epoch)
         """
-        self._batch_id += 1
-        if isinstance(self.save_freq, int) and self._batch_id % self.save_freq == 0:
-            self._make_checkpoint(f"step_{self._batch_id}")
+        if isinstance(self.save_freq, int) and self._step % self.save_freq == 0 and self._step != 0:
+            self._make_checkpoint(f"step_{self._step}")
+        self._step += 1
 
-    def on_train_end(self, logs=None) -> None:
+    def on_train_end(self, logs: Optional[Dict[str, Any]] = None) -> None:
         """Save model on training end if not saved yet"""
-        if isinstance(self.save_freq, int) and self._batch_id % self.save_freq != 0:
+        if isinstance(self.save_freq, int) and self._step % self.save_freq != 0:
             self._make_checkpoint("train_end")
 
 
@@ -124,25 +131,23 @@ class DevEvaluator(Callback):
         self._logger = None
         self._logging_method = None
         self.set_logger(logger)
-        self.iteration = 0
 
     def _simple_log(self, dev_logs: Dict[str, Any]) -> None:
         """Log results to a simple logger"""
-        self._logger.debug(f"Evaluation results at iteration {self.iteration}:\n{dev_logs}")
+        self._logger.debug(f"Evaluation results at iteration {self.model.optimizer.iterations}:\n{dev_logs}")
 
     @staticmethod
     def _wandb_log(dev_logs: Dict[str, Any]) -> None:
         """Log results to WandB. This will not be committed automatically!"""
         wandb.log({"dev_" + key: value for key, value in dev_logs.items()}, commit=False)
 
-    def on_train_batch_end(self, batch: int, logs=None) -> None:
-        if (self.iteration + 1) % self.log_freq == 0:
+    def on_train_batch_end(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        if self.model.optimizer.iterations % self.log_freq == 0:
             results = self.model.evaluate(self.dev_data, return_dict=True)
             self._logging_method(results)
-        self.iteration += 1
 
-    def on_epoch_end(self, epoch: int, logs=None) -> None:
-        if self.iteration % self.log_freq != 0:
+    def on_epoch_end(self, epoch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        if self.model.optimizer.iterations % self.log_freq != 0:
             results = self.model.evaluate(self.dev_data, return_dict=True)
             self._logging_method(results)
 

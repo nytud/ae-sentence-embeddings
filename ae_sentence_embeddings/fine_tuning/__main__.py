@@ -4,7 +4,7 @@
 """Tune hyperparameters or run fine-tuning"""
 
 from ae_sentence_embeddings.fine_tuning.fine_tune_encoder import fine_tune, lookup_transformer_type
-from ae_sentence_embeddings.ae_training.pretrain import (
+from ae_sentence_embeddings.fine_tuning.collect_args import (
     collect_wandb_args,
     group_train_args_from_flat
 )
@@ -33,7 +33,6 @@ def main() -> None:
         freeze_encoder=bool(config.get("freeze_encoder")),
         validation_freq=config.get("validation_freq", "epoch"),
         dataset_cache_dir=config.get("dataset_cache_dir"),
-        devices=config.get("devices"),
         use_mcc=bool(config.get("use_mcc")),
         num_epochs=config.get("num_epochs", 2),
         drop_remainder=bool(config.get("drop_remainder"))

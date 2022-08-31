@@ -64,13 +64,14 @@ def main() -> None:
     tokenization_kwargs = {
         "dataset": raw_dataset,
         "tokenizer": tokenizer,
-        "text_col_names": args.text_columns,
     }
     if args.label_column is not None:
         tokenization_func = tokenize_labelled_sequences
+        tokenization_kwargs["text_col_names"] = args.text_columns
         tokenization_kwargs["label_col_name"] = args.label_column
         tokenization_kwargs["remove_old_cols"] = True
     else:
+        tokenization_kwargs["text_col_name"] = args.text_columns[0]
         tokenization_func = tokenize_hgf_dataset
 
     tokenized_dataset = tokenization_func(**tokenization_kwargs)

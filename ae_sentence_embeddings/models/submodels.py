@@ -10,12 +10,14 @@ Defining them as a model allows to use them separately after pre-training
 from __future__ import annotations
 from typing import Tuple, Optional, Literal, Dict, Any
 from types import MappingProxyType
+from copy import deepcopy
 
 import tensorflow as tf
 from tensorflow.keras import Model as KModel
 from tensorflow.keras import layers as tfl
 from tensorflow.keras.initializers import TruncatedNormal
 from tensorflow.keras.utils import register_keras_serializable
+from transformers import TFSharedEmbeddings
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.openai.configuration_openai import OpenAIGPTConfig
 from transformers.modeling_tf_utils import keras_serializable
@@ -23,7 +25,6 @@ from transformers.modeling_tf_utils import keras_serializable
 from ae_sentence_embeddings.layers import (
     AeTransformerEncoder,
     AeTransformerDecoder,
-    PostPoolingLayer,
     AveragePoolingLayer,
     PMeansPooling,
     CLSPlusSEPPooling,
@@ -31,10 +32,12 @@ from ae_sentence_embeddings.layers import (
     AeTransformerGRUDecoder,
     TrainablePositionalEmbedding
 )
+from ae_sentence_embeddings.regularizers import KLDivergenceRegularizer
 from ae_sentence_embeddings.modeling_tools import process_attention_mask, make_decoder_inputs
 from ae_sentence_embeddings.argument_handling import (
     RnnLayerArgs, RnnArgs,
-    PositionalEmbeddingArgs
+    PositionalEmbeddingArgs,
+    KlArgs
 )
 
 
@@ -43,14 +46,14 @@ class SentAeEncoder(KModel):
     """The full encoder part of an AE"""
 
     def __init__(self, config: BertConfig,
-                 pooling_type: Literal["average", "cls_sep", "p_means"] = "cls_sep",
+                 pooling_type: Literal["average", "cls_sep", "p_means"],
                  **kwargs) -> None:
         """Layer initializer.
 
         Args:
             config: A BERT configuration object.
             pooling_type: Pooling method, `'average'`, `'cls_sep'`
-                or `'p_means'`. Defaults to `"cls_sep"`.
+                or `'p_means'`.
             **kwargs: Keyword arguments for the parent class.
         """
         super().__init__(**kwargs)
@@ -70,7 +73,7 @@ class SentAeEncoder(KModel):
 
     # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
-             training: Optional[bool] = None) -> Tuple[tf.Tensor, Tuple[tf.Tensor]]:
+             training: Optional[bool] = None) -> Tuple[tf.Tensor, Tuple[tf.Tensor, ...]]:
         """Call the encoder.
 
         Args:
@@ -131,38 +134,44 @@ class SentVaeEncoder(SentAeEncoder):
     def __init__(
             self,
             config: BertConfig,
-            pooling_type: Literal["average", "cls_sep", "p_means"] = "cls_sep",
-            kl_factor: float = 1.0,
-            min_kl: float = 0.0,
+            pooling_type: Literal["average", "cls_sep", "p_means"] = "average",
+            reg_args: Optional[KlArgs] = None,
             **kwargs
     ) -> None:
         """Initialize the encoder.
 
         Args:
             config: A BERT configuration object.
-            pooling_type: Pooling type, `'average'` or `'cls_sep'`. Defaults to `'cls_sep'`.
-            kl_factor: A normalizing constant by which the KL loss will be multiplied. Defaults to `1.0`.
-            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`
+            pooling_type: Pooling type, `'average'`, `'cls_sep'` or `'p_means'`.
+                Defaults to `'average'`.
+            reg_args: KL loss regularization arguments. Optional.
             **kwargs: Keyword arguments for the parent class.
         """
         super().__init__(config, pooling_type, **kwargs)
         hidden_size = 2 * config.hidden_size if self._pooling_type in {"cls_sep", "p_means"} \
             else config.hidden_size
-        self._post_pooling = PostPoolingLayer(
-            hidden_size=hidden_size,
-            layer_norm_eps=config.layer_norm_eps,
-            kl_factor=kl_factor,
-            min_kl=min_kl,
-            initializer_range=config.initializer_range
+        if reg_args is None:
+            reg_args = KlArgs(iters=0, warmup_iters=1)
+        reg_args = reg_args.to_dict()
+        self._post_pooling = tfl.Dense(
+            units=hidden_size * 2,
+            input_shape=(None, hidden_size),
+            kernel_initializer=TruncatedNormal(stddev=config.initializer_range),
+            activity_regularizer=KLDivergenceRegularizer(**reg_args),
+            name="post_pooling_dense"
         )
+        # Define a layer to split the Gaussian vectors to mean and logvar
+        self._post_pooling_splitter = tfl.Lambda(lambda x: tf.split(x, 2, axis=-1))
+        self._reg_args = reg_args
+        self._reg_args["iters"] = 0
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
-             training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Tuple[tf.Tensor]]:
-        """Call the encoder
+             training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor, Tuple[tf.Tensor, ...]]:
+        """Call the encoder.
 
         Args:
             inputs: Input IDs tensor with shape `(batch_size, sequence_length)`
-                    and attention mask with shape `(batch_size, sequence_length)`.
+                and attention mask with shape `(batch_size, sequence_length)`.
             training: Specifies whether the model is being used in training mode.
 
         Returns:
@@ -170,33 +179,33 @@ class SentVaeEncoder(SentAeEncoder):
         """
         pooling_output, encoder_outputs = super().call(inputs, training=training)
         # noinspection PyCallingNonCallable
-        post_pooling_mean, post_pooling_logvar = self._post_pooling(pooling_output)
-        return post_pooling_mean, post_pooling_logvar, encoder_outputs
+        post_pooling_tensor = self._post_pooling(pooling_output)
+        mean, logvar = self._post_pooling_splitter(post_pooling_tensor)
+        return mean, logvar, encoder_outputs
 
     @property
-    def kl_factor(self) -> float:
-        return self._post_pooling.kl_factor
-
-    @property
-    def min_kl(self) -> float:
-        return self._post_pooling.min_kl
-
-    def set_kl_factor(self, new_kl_factor: float) -> None:
-        """Setter for `kl_factor`"""
-        self._post_pooling.kl_factor = new_kl_factor
-
-    def set_min_kl(self, new_min_kl: float) -> None:
-        """Setter for `min_kl`"""
-        assert new_min_kl >= 0., f"The minimal KL loss must be non-negative, got {new_min_kl}."
-        self._post_pooling.min_kl = new_min_kl
+    def reg_args(self) -> MappingProxyType:
+        """Get regularization arguments. The `iters` argument will be set to zero."""
+        return MappingProxyType(self._reg_args)
 
     def get_config(self) -> Dict[str, Any]:
-        base_config = super().get_config()
+        """Get serialization configuration.
+        Note that the regularization in a serialized model has no effect.
+        This is due to the fact that the `iters` argument of the KL regularizer
+        will be set to the constant `0`.
+        """
+        base_config = super(SentVaeEncoder, self).get_config()
         return {
             **base_config,
-            "kl_factor": self._post_pooling.kl_factor,
-            "min_kl": self._post_pooling.min_kl
+            "reg_args": deepcopy(self._reg_args)
         }
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any], **kwargs) -> SentAeEncoder:
+        """Initialize the model from a configuration object."""
+        reg_args = KlArgs(**config.pop("reg_args"))
+        encoder_config = BertConfig(**config.pop("encoder_config"))
+        return cls(config=encoder_config, reg_args=reg_args, **config, **kwargs)
 
 
 # noinspection PyAbstractClass
@@ -230,7 +239,7 @@ class SentAeDecoder(KModel):
     # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor],
              training: Optional[bool] = None) -> tf.Tensor:
-        """Call the decoder
+        """Call the decoder.
 
         Args:
             inputs: An input embedding tensor of shape `(batch_size, hidden_size)`.
@@ -254,23 +263,27 @@ class SentAeDecoder(KModel):
 
 
 class SentAeGRUDecoder(KModel):
-    """A GRU-based full decoder"""
+    """A GRU-based full decoder."""
 
     def __init__(self, config: RnnArgs, **kwargs) -> None:
-        """Layer initializer
+        """Layer initializer.
 
         Args:
-            config: An RNN configuration dataclass object
-            **kwargs: Keyword arguments for the parent class
+            config: An RNN configuration dataclass object.
+            **kwargs: Keyword arguments for the parent class.
         """
         super().__init__(**kwargs)
         self._gru_config = config
         config_dict = config.to_dict()
         vocab_size = config_dict.pop("vocab_size")
         init_range = config_dict.pop("initializer_dev")
+        self._decoder_embedding = TFSharedEmbeddings(
+            vocab_size=vocab_size,
+            hidden_size=config.hidden_size,
+            initializer_range=init_range,
+            name="decoder_embedding"
+        )
         self._decoder = AeGRUDecoder(**config_dict)
-        self._out_dense = tfl.Dense(
-            vocab_size, kernel_initializer=TruncatedNormal(stddev=init_range))
 
     # noinspection PyCallingNonCallable
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
@@ -279,15 +292,16 @@ class SentAeGRUDecoder(KModel):
 
         Args:
             inputs: An sentence embedding tensor of shape `(batch_size, hidden_size)` and
-                an input token embedding tensor of shape `(batch_size, sequence_length, hidden_size)`.
+                an input token ID tensor of shape `(batch_size, sequence_length)`.
             training: Specifies whether the model is being used in training mode.
 
         Returns:
             Logits for next token prediction
         """
-        sent_embeddings, token_embeddings = inputs
+        sent_embeddings, token_ids = inputs
+        token_embeddings = self._decoder_embedding(token_ids, mode="embedding")
         hidden_output = self._decoder((sent_embeddings, token_embeddings), training=training)
-        logits = self._out_dense(hidden_output)
+        logits = self._decoder_embedding(hidden_output, mode="linear")
         return logits
 
     def get_config(self) -> Dict[str, Any]:
@@ -340,61 +354,3 @@ def parallel_decoders(
     )(outputs)
     return KModel(inputs=[sent_embeddings1, token_embeddings1, sent_embeddings2, token_embeddings2],
                   outputs=outputs, name=name)
-
-
-# noinspection PyCallingNonCallable
-def ae_double_gru(rnn_config: RnnArgs, tok_hidden_size: int) -> KModel:
-    """Define parallel decoders with the functional API.
-
-    Args:
-        rnn_config: The RNN configuration dataclass shared by the two decoders.
-        tok_hidden_size: Embedding size of the input (sub)word vectors.
-
-    Returns:
-        A functional Keras model.
-    """
-    return parallel_decoders(
-        sent_hidden_size=rnn_config.hidden_size,
-        tok_hidden_size=tok_hidden_size,
-        vocab_size=rnn_config.vocab_size,
-        linear_stddev=rnn_config.initializer_dev,
-        decoder_class=AeGRUDecoder,
-        name="double_gru",
-        decoder_kwargs={
-            "num_rnn_layers": rnn_config.num_rnn_layers,
-            "hidden_size": rnn_config.hidden_size,
-            "layernorm_eps": rnn_config.layernorm_eps,
-            "dropout_rate": rnn_config.dropout_rate
-        }
-    )
-
-
-# noinspection PyCallingNonCallable
-def ae_double_transformer_gru(
-        transformer_layers_config: OpenAIGPTConfig,
-        rnn_layers_config: RnnLayerArgs,
-        num_transformer2gru: int
-) -> KModel:
-    """Define parallel decoders with Transformer + GRU layers
-
-    Args:
-        transformer_layers_config: The Transformer configuration data
-        rnn_layers_config: The GRU configuration data
-        num_transformer2gru: number of dense layers between the Transformer and GRU layers
-
-    Returns:
-        A functional Keras model
-    """
-    return parallel_decoders(
-        sent_hidden_size=rnn_layers_config.hidden_size,
-        tok_hidden_size=transformer_layers_config.n_embd,
-        vocab_size=transformer_layers_config.vocab_size,
-        linear_stddev=transformer_layers_config.initializer_range,
-        decoder_class=AeTransformerGRUDecoder,
-        name="double_transformer_gru",
-        decoder_kwargs={
-            "transformer_config": transformer_layers_config,
-            "gru_config": rnn_layers_config,
-            "num_transformer2gru": num_transformer2gru
-        }
-    )

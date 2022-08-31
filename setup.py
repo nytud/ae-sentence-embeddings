@@ -19,8 +19,8 @@ package_data = \
 {"": ["*"]}
 
 install_requires = \
-["datasets>=2.0.0,<3.0.0",
- "tensorflow-addons>=0.16.1,<0.17.0",
+["datasets>=2.0.0,<2.3.0",
+ "tensorflow-addons>=0.16.1,<0.18.0",
  "tensorflow>=2.8.0,<3.0.0",
  "transformers>=4.17.0,<5.0.0",
  "wandb>=0.12.11,<0.13.0"]

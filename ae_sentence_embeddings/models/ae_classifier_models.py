@@ -9,12 +9,13 @@ from typing import Literal, Tuple, Optional, Dict, Any
 
 import tensorflow as tf
 from tensorflow.keras import layers as tfl
-from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import register_keras_serializable
 from transformers import BertConfig
 from transformers.modeling_tf_utils import get_initializer
 
 from ae_sentence_embeddings.models import SentVaeEncoder
+from ae_sentence_embeddings.layers import VaeSampling
+from ae_sentence_embeddings.argument_handling import KlArgs
 
 
 @register_keras_serializable(package="ae_sentence_embeddings.models")
@@ -27,9 +28,8 @@ class SentVaeClassifier(SentVaeEncoder):
             self,
             config: BertConfig,
             num_labels: int,
-            pooling_type: Literal["average", "cls_sep"] = "cls_sep",
-            kl_factor: float = 0.,
-            min_kl: float = 0.,
+            pooling_type: Literal["average", "cls_sep", "p_means"] = "average",
+            reg_args: Optional[KlArgs] = None,
             **kwargs
     ) -> None:
         """Initialize the encoder and the classifier head.
@@ -39,20 +39,23 @@ class SentVaeClassifier(SentVaeEncoder):
         Args:
             config: A BERT configuration object.
             num_labels: The number of classification labels. Set it to `1` for binary classification.
-            pooling_type: Pooling type, `'average'` or `'cls_sep'`. Defaults to `'cls_sep'`.
-            kl_factor: A normalizing constant by which the KL loss will be multiplied.
-                Set it to zero if the KL loss should be ignored. Defaults to `0.0`.
-            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`.
+            pooling_type: Pooling type, `'average'` or `'cls_sep'`. Defaults to `'average'`.
+            reg_args: KL loss regularization arguments. If not specified, the KL loss will always be 0.
+                Optional.
             **kwargs: Keyword arguments passed to the `keras.Model` initializer.
+
+        Raises:
+            `AssertionError` if `num_labels < 0`.
         """
-        if num_labels <= 0:
-            raise ValueError(f"The number of labels must be a positive integer, got {num_labels}")
-        super().__init__(config=config, pooling_type=pooling_type,
-                         kl_factor=kl_factor, min_kl=min_kl, **kwargs)
+        assert num_labels > 0, f"The number of labels must be a positive integer, got {num_labels}"
+        if reg_args is None:
+            reg_args = KlArgs(iters=0, warmup_iters=1)
+        super().__init__(config=config, pooling_type=pooling_type, reg_args=reg_args, **kwargs)
         self._num_labels = num_labels
         classifier_dropout = config.classifier_dropout if config.classifier_dropout is not None \
             else config.hidden_dropout_prob
         self._dropout = tfl.Dropout(rate=classifier_dropout)
+        self._sampler = VaeSampling()
         self._classifier = tfl.Dense(
             units=num_labels,
             kernel_initializer=get_initializer(config.initializer_range),
@@ -60,7 +63,7 @@ class SentVaeClassifier(SentVaeEncoder):
         )
 
     def call(self, inputs: Tuple[tf.Tensor, tf.Tensor],
-             training: Optional[bool] = None) -> tf.Tensor:
+             training: Optional[bool] = None) -> Tuple[tf.Tensor, tf.Tensor]:
         """Call the model.
 
         Args:
@@ -69,54 +72,32 @@ class SentVaeClassifier(SentVaeEncoder):
             training: Specifies whether the model is being used in training mode.
 
         Returns:
-            A tensor of shape `(batch_size, num_labels)` if `num_labels > 1` or
-            a tensor of shape `(batch_size)` otherwise.
+            Two tensors:
+            1. Logits of shape `(batch_size, num_labels)` if `num_labels > 1` or
+                a tensor of shape `(batch_size)` otherwise.
+            2. A sampled tensor from the encoder output distribution.
         """
-        post_pooling_mean, _, _ = super().call(inputs, training=training)
-        return self._classifier(self._dropout(post_pooling_mean, training=training))
-
-    @classmethod
-    def from_pretrained(cls, ckpt_path: str, num_labels: int = 1,
-                        kl_factor: Optional[float] = 0., min_kl: Optional[float] = 0.) -> SentVaeClassifier:
-        """Load the encoder weights from a pre-trained model.
-
-        Args:
-            ckpt_path: Path to a Keras-serialized model checkpoint.
-            num_labels: Number of classification labels. Defaults to `1`.
-            kl_factor: A value which will override the KL multiplier of the
-                pre-trained model. Set it to `None` to omit this. Defaults to `0.`.
-            min_kl: Minimal KL loss value. This can be useful to avoid posterior collapse. Defaults to `0.0`.
-
-        Returns:
-            A model whit pre-trained encoder weights and newly initialized classifier weights.
-        """
-        if num_labels <= 0:
-            raise ValueError(f"The number of labels must be a positive integer, got {num_labels}")
-
-        # load the pre-trained model and get its configuration
-        pre_trained_model = load_model(ckpt_path)
-        pre_trained_config = pre_trained_model.get_config()
-        pre_trained_encoder_config = BertConfig(**pre_trained_config["encoder_config"])
-        pre_trained_encoder_config.num_labels = num_labels
-        new_kl_factor = kl_factor if kl_factor is not None else pre_trained_config["kl_factor"]
-        new_min_kl = min_kl if min_kl is not None else pre_trained_config["min_kl"]
-
-        # create the new model
-        new_model = cls(pre_trained_encoder_config, pooling_type=pre_trained_config["pooling_type"],
-                        kl_factor=new_kl_factor, min_kl=new_min_kl, num_labels=num_labels)
-        # build the model by calling it on dummy inputs
-        dummy_inputs = (tf.constant([[0, 1, 2]]), tf.constant([[1, 1, 1]]))
+        mean, logvar, _ = super().call(inputs, training=training)
         # noinspection PyCallingNonCallable
-        _ = new_model(dummy_inputs, training=False)
-
-        # copy the weights
-        for pre_trained_layer, new_layer in zip(pre_trained_model.layers, new_model.layers):
-            new_layer.set_weights(pre_trained_layer.get_weights())
-        return new_model
+        sample = self._sampler((mean, logvar))
+        logits = self._classifier(self._dropout(sample, training=training))
+        return logits, sample
 
     def get_config(self) -> Dict[str, Any]:
         base_config = super().get_config()
         return {**base_config, "num_labels": self._num_labels}
+
+    def build_and_load(self, weight_path: str, **kwargs) -> None:
+        """Build and load the model weights.
+
+        Args:
+            weight_path: Path to the saved model weights.
+            **kwargs: Further arguments passed to the `load_weights` method.
+        """
+        # noinspection PyCallingNonCallable
+        self((tf.keras.Input(shape=(None,), dtype=tf.int32),
+              tf.keras.Input(shape=(None,), dtype=tf.int32)))
+        self.load_weights(weight_path, **kwargs)
 
     @property
     def num_labels(self) -> int:

@@ -1,17 +1,20 @@
+# -*- coding: utf-8 -*-
+
 """A module for implementing learning rate schedulers"""
 
 from typing import Optional, Literal, Dict, Any, Union
 from logging import Logger
 from warnings import warn
 
+import wandb
 import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
 from tensorflow.keras import backend as keras_backend
 from tensorflow_addons.optimizers import CyclicalLearningRate
-import wandb
 
 from ae_sentence_embeddings.argument_handling import LearningRateArgs, OneCycleArgs
 from ae_sentence_embeddings.scheduling import OneCycleSchedule, LinearAnneal
+from ae_sentence_embeddings.regularizers.kl_annealer import calculate_beta
 
 
 class OneCycleScheduler(Callback):
@@ -144,7 +147,7 @@ class CyclicScheduler(Callback):
 
 
 class KLAnnealer(Callback):
-    """A callback to anneal the KL factor during traning."""
+    """A callback to anneal the KL factor during training."""
 
     def __init__(
             self,
@@ -181,3 +184,36 @@ class KLAnnealer(Callback):
         if self._log_freq is not None and self._iteration % self._log_freq == 0:
             wandb.log({self.name: self.model.kl_factor}, commit=False)
         self._iteration += 1
+
+
+class VaeLogger(Callback):
+    """A callback that allows to monitor the learning rate
+    and the KL loss beta during training.
+    """
+
+    def __init__(
+            self,
+            log_update_freq: int,
+            beta_warmup_iters: int,
+            beta_warmup_start: int
+    ) -> None:
+        """Initialize the callback.
+
+        Args:
+            log_update_freq: Logging frequency in terms of batches.
+            beta_warmup_iters: The number of iterations while the KL loss `beta` will be annealed.
+            beta_warmup_start: The iteration after which the KL loss `beta` will start to be annealed.
+        """
+        super(VaeLogger, self).__init__()
+        self.log_update_freq = log_update_freq
+        self._beta_warmup_iters = beta_warmup_iters
+        self._beta_warmup_start = beta_warmup_start
+
+    def on_train_batch_end(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Calculate the actual learning rate and KL beta values."""
+        iteration = self.model.optimizer.iterations
+        if iteration % self.log_update_freq == 0:
+            lr = keras_backend.get_value(self.model.optimizer.lr(iteration))
+            beta = calculate_beta(iteration, warmup_iters=self._beta_warmup_iters,
+                                  start=self._beta_warmup_start)
+            wandb.log({"learning_rate": lr, "kl_beta": beta}, commit=False)
