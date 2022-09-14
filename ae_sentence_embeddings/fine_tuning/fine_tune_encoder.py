@@ -10,6 +10,7 @@ from tensorflow.keras.metrics import SparseCategoricalAccuracy
 from tensorflow_addons.optimizers import AdamW
 from wandb.keras import WandbCallback
 from transformers import (
+    BertConfig,
     TFAutoModel,
     TFAutoModelForTokenClassification,
     TFAutoModelForSequenceClassification
@@ -37,7 +38,7 @@ transformers_type_dict = {
 
 
 def lookup_transformer_type(
-        transformer_type: Literal["Model", "SequenceClassification", "TokenClassification"]
+        transformer_type: Literal["Model", "SequenceClassification", "TokenClassification", "SentVaeClassifier"]
 ) -> type:
     """Get the `transformers` architecture indicated by a string."""
     try:
@@ -229,7 +230,7 @@ def fine_tune(
             model((tf.keras.Input(shape=(None,), dtype=tf.int32),
                    tf.keras.Input(shape=(None,), dtype=tf.int32)))
         else:
-            model = model_type(encoder_config, num_labels=num_labels)
+            model = model_type(BertConfig.from_dict(encoder_config), num_labels=num_labels)
             model.build_and_load(model_ckpt)
         optimizer = AdamW(**adamw_args.to_dict())
 

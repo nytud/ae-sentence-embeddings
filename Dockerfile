@@ -1,7 +1,7 @@
 FROM tensorflow/tensorflow:2.9.1-gpu
 
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python3 -
-ENV PATH="${PATH}:/root/.poetry/bin"
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="${PATH}:/root/.local/bin"
 
 ARG USER_NAME
 ARG GROUP_NAME

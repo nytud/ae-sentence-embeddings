@@ -81,7 +81,7 @@ class SentVaeClassifier(SentVaeEncoder):
         # noinspection PyCallingNonCallable
         sample = self._sampler((mean, logvar))
         logits = self._classifier(self._dropout(sample, training=training))
-        return logits, sample
+        return logits
 
     def get_config(self) -> Dict[str, Any]:
         base_config = super().get_config()

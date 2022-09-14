@@ -130,10 +130,13 @@ def collect_wandb_args() -> Dict[str, Any]:
         The `WandB` configuration dict.
     """
     parser = get_training_args()
+    parser.add_argument("--encoder-config", dest="encoder_config", type=read_json,
+                        help="Optional. Path to an encoder configuration file.")
     parser.add_argument("--project", help="Optional. Name of the current WandB project.")
     parser.add_argument("--run-name", dest="run_name", help="Optional. Name of the current run.")
     args = parser.parse_args()
     arg_dict = flatten_nested_dict(read_json(args.config_file))
+    arg_dict["encoder_config"] = args.encoder_config
     _check_cycling_total_steps(arg_dict)
     wandb.init(project=args.project, name=args.run_name, config=arg_dict)
     config = wandb.config

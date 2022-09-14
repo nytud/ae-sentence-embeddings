@@ -132,7 +132,7 @@ def strategy_setup() -> tf.distribute.Strategy:
     if len(gpus) > 1:
         strategy = tf.distribute.MirroredStrategy()
     elif len(gpus) == 1:
-        strategy = tf.distribute.OneDeviceStrategy(device=gpus[0])
+        strategy = tf.distribute.OneDeviceStrategy(device="/gpu:0")
     else:
         strategy = tf.distribute.OneDeviceStrategy(device="/cpu")
     return strategy
@@ -184,6 +184,14 @@ def process_data(
         drop_remainder=True
     )
     return dataset
+
+
+def load_encoder(model: BertRnnVae, ckpt: str) -> None:
+    # noinspection PyCallingNonCallable
+    model((tf.keras.Input(shape=(None,), dtype=tf.int32),
+           tf.keras.Input(shape=(None,), dtype=tf.int32)))
+    # noinspection PyProtectedMember
+    model._encoder.load_weights(ckpt)
 
 
 def main() -> None:
@@ -251,7 +259,7 @@ def main() -> None:
         )
         if args["trained_model"] is not None:
             logger.debug("Loading weights from checkpoint...")
-            strategy.run(model.load_checkpoint, (args["trained_model"], args["trained_optimizer"]))
+            strategy.run(load_encoder, (model, args["trained_model"]))
     logger.debug("Training has begun!")
     _ = model.fit(
         x=train_dataset,

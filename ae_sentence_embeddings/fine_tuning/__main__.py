@@ -3,6 +3,8 @@
 
 """Tune hyperparameters or run fine-tuning"""
 
+from typing import Dict, Any
+
 from ae_sentence_embeddings.fine_tuning.fine_tune_encoder import fine_tune, lookup_transformer_type
 from ae_sentence_embeddings.fine_tuning.collect_args import (
     collect_wandb_args,
@@ -14,12 +16,11 @@ from ae_sentence_embeddings.argument_handling import check_if_positive_int
 def main() -> None:
     """Main function"""
     config = collect_wandb_args()
+    print(config.keys())
     train_args = group_train_args_from_flat(config)
     model_ckpt = config["model_ckpt"]
     num_labels = check_if_positive_int(config["num_labels"])
-    model_type = config.get("model_type")
-    if model_type is not None:
-        model_type = lookup_transformer_type(model_type)
+    model_type = lookup_transformer_type(config["model_type"])
     fine_tune(
         model_ckpt=model_ckpt,
         num_labels=num_labels,
@@ -30,6 +31,7 @@ def main() -> None:
         save_and_log_args=train_args.save_and_log_args,
         lr_args=train_args.lr_one_cycle_args,
         momentum_args=train_args.momentum_one_cycle_args,
+        encoder_config=config.get("encoder_config"),
         freeze_encoder=bool(config.get("freeze_encoder")),
         validation_freq=config.get("validation_freq", "epoch"),
         dataset_cache_dir=config.get("dataset_cache_dir"),
